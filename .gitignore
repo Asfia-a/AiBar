@@ -1,0 +1,43 @@
+# Java / Maven
+**/target/
+**/.mvn/
+**/*.class
+**/*.jar
+**/*.war
+**/*.iml
+**/.idea/
+**/.vscode/
+*.log
+
+# Node
+**/node_modules/
+**/dist/
+**/.vite/
+*.local
+
+# Env / secrets（真实凭据一律放这里，绝不提交）
+.env
+.env.*
+!.env.example
+**/application-local.yml
+**/application-local.yaml
+**/application-prod.yml
+**/application-prod.yaml
+
+# 运行时产物 / 临时文件
+**/logs/
+run.err
+run.out
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
+tmp_*.java
+_probe.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.swp
+*~

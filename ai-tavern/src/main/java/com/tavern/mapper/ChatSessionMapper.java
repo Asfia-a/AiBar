@@ -1,0 +1,60 @@
+package com.tavern.mapper;
+
+import com.tavern.entity.ChatSession;
+import org.apache.ibatis.annotations.*;
+
+import java.util.List;
+import java.util.Map;
+
+@Mapper
+public interface ChatSessionMapper {
+
+    @Select("SELECT s.*, c.name AS character_name, c.avatar AS character_avatar FROM t_chat_session s " +
+            "LEFT JOIN t_character c ON s.character_id=c.id WHERE s.id=#{id}")
+    ChatSession findById(Long id);
+
+    @Insert("""
+            INSERT INTO t_chat_session(user_id, character_id, title, last_message, last_role, message_count, total_tokens, prompt_snapshot)
+            VALUES(#{userId}, #{characterId}, #{title}, #{lastMessage}, #{lastRole}, #{messageCount}, #{totalTokens}, #{promptSnapshot})
+            """)
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    int insert(ChatSession session);
+
+    @Update("""
+            UPDATE t_chat_session SET last_message=#{lastMessage}, last_role=#{lastRole},
+            message_count=#{messageCount}, total_tokens=#{totalTokens}, updated_at=NOW() WHERE id=#{id}
+            """)
+    int update(ChatSession session);
+
+    @Update("UPDATE t_chat_session SET prompt_snapshot=#{promptSnapshot} WHERE id=#{id} AND (prompt_snapshot IS NULL OR prompt_snapshot='')")
+    int updatePromptSnapshot(@Param("id") Long id, @Param("promptSnapshot") String promptSnapshot);
+
+    @Select("SELECT s.*, c.name AS character_name, c.avatar AS character_avatar FROM t_chat_session s " +
+            "LEFT JOIN t_character c ON s.character_id=c.id WHERE s.user_id=#{userId} ORDER BY s.updated_at DESC")
+    List<ChatSession> listByUser(Long userId);
+
+    @Select("SELECT s.*, c.name AS character_name, c.avatar AS character_avatar FROM t_chat_session s " +
+            "LEFT JOIN t_character c ON s.character_id=c.id " +
+            "WHERE s.user_id=#{userId} AND s.character_id=#{characterId} " +
+            "ORDER BY s.updated_at DESC LIMIT 1")
+    ChatSession findLatestByUserAndCharacter(@Param("userId") Long userId, @Param("characterId") Long characterId);
+
+    @Select("SELECT id, character_id FROM t_chat_session WHERE prompt_snapshot IS NULL OR prompt_snapshot=''")
+    List<ChatSession> listMissingSnapshots();
+
+    @Delete("DELETE FROM t_chat_session WHERE id=#{id} AND user_id=#{userId}")
+    int delete(@Param("id") Long id, @Param("userId") Long userId);
+
+    @Select("SELECT COUNT(*) FROM t_chat_session")
+    long countAll();
+
+    @Select("SELECT COUNT(*) FROM t_chat_session WHERE DATE(created_at)=CURDATE()")
+    long countToday();
+
+    @Select("""
+            SELECT DATE(created_at) AS day, COUNT(*) AS cnt FROM t_chat_session
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+            GROUP BY DATE(created_at) ORDER BY day
+            """)
+    List<Map<String, Object>> sessionTrend(@Param("days") int days);
+}

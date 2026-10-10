@@ -1,0 +1,13 @@
+{
+  "name": "ai-tavern-mcp",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cursor MCP：AI 角色卡生成 / 立绘 / 世界树 / 对话改写为叙事作品",
+  "bin": {
+    "ai-tavern-mcp": "./server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  }
+}

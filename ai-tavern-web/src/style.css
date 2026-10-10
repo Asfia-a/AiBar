@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --tavern-bg: #1a1209;
+  --tavern-surface: #2d1f14;
+  --tavern-amber: #d4a853;
+  --tavern-text: #f5e6c8;
+  --tavern-muted: #a89070;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--tavern-bg);
+  color: var(--tavern-text);
+  background-image:
+    radial-gradient(ellipse at 20% 0%, rgba(212, 168, 83, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(139, 105, 20, 0.06) 0%, transparent 50%);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #5c4030;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8b6914;
+}
+
+@layer components {
+  .tavern-card {
+    @apply rounded-xl border border-tavern-700/50 bg-tavern-800/60 backdrop-blur-sm;
+  }
+
+  .tavern-btn {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 font-medium transition-all;
+  }
+
+  .tavern-btn-primary {
+    @apply tavern-btn bg-tavern-400 text-tavern-950 hover:bg-tavern-300;
+  }
+
+  .tavern-btn-ghost {
+    @apply tavern-btn border border-tavern-600 text-tavern-100 hover:border-tavern-400 hover:text-tavern-300;
+  }
+
+  .tavern-input {
+    @apply w-full rounded-lg border border-tavern-600 bg-tavern-900/80 px-3 py-2 text-tavern-100 placeholder:text-tavern-muted outline-none focus:border-tavern-400;
+  }
+}
+
+/* Element Plus dark overrides */
+.el-button--primary {
+  --el-button-bg-color: #c9952c;
+  --el-button-border-color: #c9952c;
+  --el-button-hover-bg-color: #d4a853;
+  --el-button-hover-border-color: #d4a853;
+  --el-button-active-bg-color: #8b6914;
+  --el-button-active-border-color: #8b6914;
+}
+
+.el-input__wrapper,
+.el-textarea__inner {
+  background-color: rgba(26, 18, 9, 0.8) !important;
+  box-shadow: 0 0 0 1px #5c4030 inset !important;
+}
+
+.el-input__wrapper:hover,
+.el-textarea__inner:hover {
+  box-shadow: 0 0 0 1px #8b6914 inset !important;
+}
+
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px #d4a853 inset !important;
+}

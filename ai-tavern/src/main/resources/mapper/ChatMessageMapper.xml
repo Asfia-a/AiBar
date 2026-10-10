@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tavern.mapper.ChatMessageMapper">
+
+    <select id="searchMessages" resultType="com.tavern.entity.ChatMessage">
+        SELECT m.* FROM t_chat_message m
+        INNER JOIN t_chat_session s ON m.session_id = s.id
+        WHERE s.user_id = #{userId}
+        <if test="keyword != null and keyword != ''">
+            AND m.content LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        ORDER BY m.created_at DESC
+    </select>
+
+</mapper>
