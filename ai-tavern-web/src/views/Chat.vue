@@ -72,6 +72,17 @@
           <StickyNote class="size-4" />
         </Button>
 
+        <!-- 多选删除入口：进入后每条消息前出现勾选框 -->
+        <Button
+          v-if="sessionId && messages.length && !selecting"
+          variant="ghost"
+          size="icon-sm"
+          title="选择消息删除"
+          @click="enterSelecting"
+        >
+          <ListChecks class="size-4" />
+        </Button>
+
         <DropdownMenu v-if="sessionId">
           <DropdownMenuTrigger as-child>
             <Button variant="ghost" size="icon-sm">
@@ -123,6 +134,22 @@
             class="group flex gap-3"
             :class="m.role === 'user' ? 'flex-row-reverse' : ''"
           >
+            <!-- 多选模式下的勾选框 -->
+            <button
+              v-if="selecting && m.id"
+              type="button"
+              class="mt-1 grid size-5 shrink-0 place-items-center rounded-full border transition-colors"
+              :class="
+                isSelected(m)
+                  ? 'border-foreground bg-foreground text-background'
+                  : 'border-border text-transparent hover:border-foreground/50'
+              "
+              :title="isSelected(m) ? '取消选择' : '选择这条'"
+              @click.stop="toggleSelect(m)"
+            >
+              <Check class="size-3" />
+            </button>
+
             <!-- 头像：助手用角色头像，用户用自己 -->
             <Avatar class="mt-0.5 size-7 shrink-0">
               <template v-if="m.role === 'user'">
@@ -138,11 +165,14 @@
             <div class="flex min-w-0 max-w-[85%] flex-col" :class="m.role === 'user' ? 'items-end' : 'items-start'">
               <div
                 class="rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words"
-                :class="
+                :class="[
                   m.role === 'user'
                     ? 'whitespace-pre-wrap rounded-tr-md bg-secondary text-secondary-foreground'
-                    : 'rounded-tl-md border border-border/60 bg-card'
-                "
+                    : 'rounded-tl-md border border-border/60 bg-card',
+                  selecting && isSelected(m) ? 'ring-2 ring-foreground/40' : '',
+                  selecting ? 'cursor-pointer' : '',
+                ]"
+                @click="selecting && toggleSelect(m)"
               >
                 <span v-if="m.role === 'user'">{{ m.content }}</span>
                 <!-- 模型输出带 markdown，解析后渲染；原始 HTML 已在 renderMarkdown 中丢弃 -->
@@ -217,6 +247,28 @@
       <!-- 输入区 -->
       <div class="shrink-0 border-t border-border/60 bg-background/60 px-4 py-3 backdrop-blur">
         <div class="mx-auto w-full max-w-3xl">
+          <!-- 多选删除的浮动操作条 -->
+          <div
+            v-if="selecting"
+            class="mb-2 flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-secondary px-3 py-2"
+          >
+            <span class="text-xs text-muted-foreground">
+              已选 <span class="font-medium text-foreground">{{ selectedIds.length }}</span> 条
+            </span>
+            <div class="flex gap-1.5">
+              <Button variant="ghost" size="xs" @click="exitSelecting">取消</Button>
+              <Button
+                variant="destructive"
+                size="xs"
+                :disabled="!selectedIds.length || deleting"
+                @click="askDeleteSelected"
+              >
+                <Trash2 class="size-3.5" />
+                删除
+              </Button>
+            </div>
+          </div>
+
           <!-- 上下文占用条：把后端的窗口裁剪显式画出来 -->
           <div v-if="ctxMeta" class="mb-2">
             <div class="flex h-1 w-full overflow-hidden rounded-full bg-muted">
@@ -323,6 +375,27 @@
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- 删除选中消息的确认框 -->
+    <Dialog v-model:open="deleteOpen">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>删除 {{ selectedIds.length }} 条消息？</DialogTitle>
+          <DialogDescription>
+            删除后这些内容不会再进入上下文，也就是说 AI 会「忘掉」它们。
+            操作不可恢复，已扣的积分不退。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter class="flex-row justify-end gap-2">
+          <Button variant="outline" :disabled="deleting" @click="deleteOpen = false">取消</Button>
+          <Button variant="destructive" :disabled="deleting" @click="confirmDeleteSelected">
+            <Loader2 v-if="deleting" class="size-4 animate-spin" />
+            <Trash2 v-else class="size-4" />
+            删除
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
@@ -339,6 +412,7 @@ import {
   Copy,
   GitBranch,
   Heart,
+  ListChecks,
   Loader2,
   MoreHorizontal,
   PanelLeft,
@@ -353,6 +427,7 @@ import {
 import {
   branchSession,
   createSession,
+  deleteMessages,
   deleteSession,
   editMessage,
   getMessages,
@@ -416,6 +491,11 @@ const editOpen = ref(false)
 const editTarget = ref(null)
 const editText = ref('')
 const editSaving = ref(false)
+/** 多选删除：进入后每条消息前面出现勾选框 */
+const selecting = ref(false)
+const selectedIds = ref([])
+const deleteOpen = ref(false)
+const deleting = ref(false)
 /** 用户是否贴在底部：贴底才自动跟随流式输出，否则不打断向上翻阅 */
 const stickToBottom = ref(true)
 let suppressLoad = false
@@ -806,6 +886,62 @@ async function removeSession() {
   await deleteSession(sessionId.value)
   await refreshSessions()
   router.push('/chat')
+}
+
+/* ---------- 多选删除：选中一段消息，从库里和上下文里一起清掉 ---------- */
+
+function enterSelecting() {
+  if (streaming.value) {
+    toast.warning('请等待当前回复完成')
+    return
+  }
+  if (!messages.value.length) {
+    toast.warning('这段会话还没有消息')
+    return
+  }
+  selecting.value = true
+  selectedIds.value = []
+}
+
+function exitSelecting() {
+  selecting.value = false
+  selectedIds.value = []
+}
+
+function isSelected(m) {
+  return m.id != null && selectedIds.value.includes(m.id)
+}
+
+function toggleSelect(m) {
+  if (m.id == null) return
+  const i = selectedIds.value.indexOf(m.id)
+  if (i >= 0) {
+    selectedIds.value = selectedIds.value.filter((id) => id !== m.id)
+  } else {
+    selectedIds.value = [...selectedIds.value, m.id]
+  }
+}
+
+function askDeleteSelected() {
+  if (!selectedIds.value.length) return
+  deleteOpen.value = true
+}
+
+async function confirmDeleteSelected() {
+  if (!selectedIds.value.length || deleting.value) return
+  deleting.value = true
+  try {
+    const res = await deleteMessages(sessionId.value, selectedIds.value)
+    toast.success(`已删除 ${res?.deleted ?? selectedIds.value.length} 条，之后不会再进入上下文`)
+    deleteOpen.value = false
+    exitSelecting()
+    await loadMessages()
+    await refreshSessions()
+  } catch (e) {
+    toast.error(e?.message || '删除失败')
+  } finally {
+    deleting.value = false
+  }
 }
 
 /** 输入框随内容长高，最多 160px */

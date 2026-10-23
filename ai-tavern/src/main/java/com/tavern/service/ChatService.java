@@ -339,6 +339,48 @@ public class ChatService {
         return created;
     }
 
+    /**
+     * 删除会话里选中的消息（硬删除）。
+     *
+     * <p>删掉之后 {@code buildPrompt} 就读不到它们了，等于从模型记忆里清掉；
+     * 已经扣掉的积分不退回，{@code total_tokens} 继续当「累计消耗」用。
+     */
+    @Transactional
+    public Map<String, Object> deleteMessages(Long userId, Long sessionId, List<Long> ids) {
+        ChatSession session = requireOwnSession(userId, sessionId);
+        List<Long> clean = ids == null ? List.of() : ids.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (clean.isEmpty()) {
+            throw new BusinessException("没有选中要删除的消息");
+        }
+
+        // 带上 session_id 条件，别人的消息即使传了 id 也删不掉
+        int deleted = messageMapper.deleteByIds(sessionId, clean);
+        if (deleted == 0) {
+            throw new BusinessException("这些消息不属于当前会话");
+        }
+
+        // 消息没了，它的历史版本和收藏记录不能留成孤儿
+        messageSwipeMapper.deleteByMessageIds(clean);
+        messageCollectMapper.deleteByMessageIds(clean);
+
+        // 重算会话摘要：条数、最后一条、最后说话的角色
+        ChatMessage last = messageMapper.findLast(sessionId);
+        int remaining = messageMapper.countBySession(sessionId);
+        session.setMessageCount(remaining);
+        session.setLastMessage(last == null ? null : last.getContent());
+        session.setLastRole(last == null ? null : last.getRole());
+        sessionMapper.update(session);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("deleted", deleted);
+        out.put("messageCount", remaining);
+        out.put("lastMessage", session.getLastMessage());
+        return out;
+    }
+
     private ChatMessage requireOwnMessage(Long userId, Long messageId) {
         ChatMessage msg = messageMapper.findById(messageId);
         if (msg == null) {

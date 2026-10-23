@@ -17,6 +17,11 @@ export function getMessages(sessionId) {
   return request.get(`/chat/sessions/${sessionId}/messages`)
 }
 
+/** 批量删除消息：删掉后不再进入上下文（硬删除，不可恢复） */
+export function deleteMessages(sessionId, ids) {
+  return request.post(`/chat/sessions/${sessionId}/messages/delete`, { ids })
+}
+
 /** 会话级作者注释：一段插在历史里的强指令 */
 export function getAuthorNote(sessionId) {
   return request.get(`/chat/sessions/${sessionId}/author-note`)

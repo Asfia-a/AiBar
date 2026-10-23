@@ -1,6 +1,7 @@
 package com.tavern.mapper;
 
 import com.tavern.entity.MessageSwipe;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Options;
@@ -27,4 +28,13 @@ public interface MessageSwipeMapper {
     /** 编辑某个版本：内容改了令牌不变，历史计费不追溯 */
     @Update("UPDATE t_message_swipe SET content=#{content} WHERE message_id=#{messageId} AND idx=#{idx}")
     int updateContent(@Param("messageId") Long messageId, @Param("idx") int idx, @Param("content") String content);
+
+    /** 消息被删除时，它的所有历史版本一起清掉，避免留下孤儿数据 */
+    @Delete("""
+            <script>
+            DELETE FROM t_message_swipe WHERE message_id IN
+            <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+            </script>
+            """)
+    int deleteByMessageIds(@Param("ids") java.util.List<Long> ids);
 }

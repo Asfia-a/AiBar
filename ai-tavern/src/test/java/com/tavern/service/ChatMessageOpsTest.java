@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -194,5 +195,55 @@ class ChatMessageOpsTest {
         when(sessionMapper.findById(2L)).thenReturn(session(7L));
 
         assertThrows(BusinessException.class, () -> service.swipe(7L, 60L));
+    }
+
+    @Test
+    @DisplayName("删除消息：级联清掉历史版本与收藏，并重算会话摘要")
+    void deleteMessagesCascades() {
+        when(sessionMapper.findById(2L)).thenReturn(session(7L));
+        when(messageMapper.deleteByIds(eq(2L), anyList())).thenReturn(2);
+        when(messageMapper.findLast(2L)).thenReturn(message(40L, 2L, "assistant", "剩下的最后一条"));
+        when(messageMapper.countBySession(2L)).thenReturn(3);
+
+        java.util.Map<String, Object> res = service.deleteMessages(7L, 2L, List.of(50L, 51L));
+
+        assertEquals(2, res.get("deleted"));
+        assertEquals(3, res.get("messageCount"));
+        assertEquals("剩下的最后一条", res.get("lastMessage"));
+        // 消息删了，它的多版本与收藏不能留成孤儿
+        verify(swipeMapper).deleteByMessageIds(List.of(50L, 51L));
+        verify(collectMapper).deleteByMessageIds(List.of(50L, 51L));
+        verify(sessionMapper).update(any());
+        // total_tokens 不回退：积分已经扣了
+        verify(sessionMapper, never()).delete(any(), any());
+    }
+
+    @Test
+    @DisplayName("删除消息：别人的会话直接拒绝")
+    void deleteRejectsOthersSession() {
+        when(sessionMapper.findById(2L)).thenReturn(session(8L));
+
+        assertThrows(BusinessException.class, () -> service.deleteMessages(7L, 2L, List.of(50L)));
+        verify(messageMapper, never()).deleteByIds(any(), anyList());
+    }
+
+    @Test
+    @DisplayName("删除消息：没选中的时候不产生任何 SQL")
+    void deleteRequiresIds() {
+        when(sessionMapper.findById(2L)).thenReturn(session(7L));
+
+        assertThrows(BusinessException.class, () -> service.deleteMessages(7L, 2L, List.of()));
+        verify(messageMapper, never()).deleteByIds(any(), anyList());
+    }
+
+    @Test
+    @DisplayName("删除消息：id 不属于这个会话时整体失败，不误删")
+    void deleteRejectsForeignMessageIds() {
+        when(sessionMapper.findById(2L)).thenReturn(session(7L));
+        when(messageMapper.deleteByIds(eq(2L), anyList())).thenReturn(0);
+
+        assertThrows(BusinessException.class, () -> service.deleteMessages(7L, 2L, List.of(999L)));
+        // 一条都没删掉，就不该再去动 swipe / 收藏
+        verify(swipeMapper, never()).deleteByMessageIds(anyList());
     }
 }

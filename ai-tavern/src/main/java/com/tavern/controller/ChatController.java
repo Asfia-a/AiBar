@@ -91,6 +91,21 @@ public class ChatController {
         return Result.ok(chatService.branch(UserContext.getUserId(), id));
     }
 
+    /** 批量删除会话里的消息：删掉后不再进入上下文 */
+    @PostMapping("/sessions/{sessionId}/messages/delete")
+    public Result<?> deleteMessages(@PathVariable Long sessionId, @RequestBody Map<String, Object> body) {
+        Object raw = body.get("ids");
+        java.util.List<Long> ids = new java.util.ArrayList<>();
+        if (raw instanceof java.util.List<?> list) {
+            for (Object o : list) {
+                if (o != null) {
+                    ids.add(Long.valueOf(o.toString()));
+                }
+            }
+        }
+        return Result.ok(chatService.deleteMessages(UserContext.getUserId(), sessionId, ids));
+    }
+
     @PostMapping("/messages/{id}/collect")
     public Result<?> collect(@PathVariable Long id) {
         chatService.collectMessage(UserContext.getUserId(), id);
