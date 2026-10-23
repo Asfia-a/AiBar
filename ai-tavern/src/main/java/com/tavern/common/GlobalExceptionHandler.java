@@ -27,6 +27,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public Result<Void> handleOther(Exception e) {
         log.error("系统异常", e);
-        return Result.fail("系统异常: " + e.getMessage());
+        // 不把异常堆栈 / SQL 细节透给前端：详情只进日志
+        return Result.fail("系统异常，请稍后重试");
     }
 }

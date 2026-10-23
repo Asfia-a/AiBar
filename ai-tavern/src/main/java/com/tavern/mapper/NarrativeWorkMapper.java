@@ -35,7 +35,7 @@ public interface NarrativeWorkMapper {
     int deleteByUser(@Param("id") Long id, @Param("userId") Long userId);
 
     @Select("""
-            SELECT w.*, u.nickname, u.avatar, c.name AS character_name, c.avatar_url AS character_avatar
+            SELECT w.*, u.nickname, u.avatar, c.name AS character_name, c.avatar AS character_avatar
             FROM t_narrative_work w
             LEFT JOIN t_user u ON w.user_id = u.id
             LEFT JOIN t_character c ON w.character_id = c.id
@@ -46,7 +46,7 @@ public interface NarrativeWorkMapper {
 
     /** 社区广场：已发布且审核通过的公开作品 */
     @Select("""
-            SELECT w.*, u.nickname, u.avatar, c.name AS character_name, c.avatar_url AS character_avatar
+            SELECT w.*, u.nickname, u.avatar, c.name AS character_name, c.avatar AS character_avatar
             FROM t_narrative_work w
             LEFT JOIN t_user u ON w.user_id = u.id
             LEFT JOIN t_character c ON w.character_id = c.id
@@ -64,7 +64,7 @@ public interface NarrativeWorkMapper {
     /** 热榜回表：按给定 id 集合取作品，排序由 Service 层按 ZSet 分数重排 */
     @Select("""
             <script>
-            SELECT w.*, u.nickname, u.avatar, c.name AS character_name, c.avatar_url AS character_avatar
+            SELECT w.*, u.nickname, u.avatar, c.name AS character_name, c.avatar AS character_avatar
             FROM t_narrative_work w
             LEFT JOIN t_user u ON w.user_id = u.id
             LEFT JOIN t_character c ON w.character_id = c.id
