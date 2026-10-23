@@ -148,15 +148,6 @@
   }
 }
 
-/* Element Plus 深色适配：重写期间新旧页面共用，重写完成后可删 */
-.dark .el-button--primary {
-  --el-button-bg-color: var(--primary);
-  --el-button-border-color: var(--primary);
-  --el-button-text-color: var(--primary-foreground);
-  --el-button-hover-bg-color: color-mix(in oklch, var(--primary) 88%, transparent);
-  --el-button-hover-border-color: color-mix(in oklch, var(--primary) 88%, transparent);
-}
-
 /*
  * markdown 内容排版（模型输出、叙事作品共用）
  * 用主题变量取色，暗色/亮色都跟着变

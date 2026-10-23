@@ -117,7 +117,7 @@
             </div>
 
             <div class="flex justify-end border-t border-border/60 pt-4">
-              <Button class="text-background" :disabled="saving" @click="save">
+              <Button style="color: var(--background)" :disabled="saving" @click="save">
                 <LoaderCircle v-if="saving" class="size-4 animate-spin" />
                 <Save v-else class="size-4" />
                 保存资料

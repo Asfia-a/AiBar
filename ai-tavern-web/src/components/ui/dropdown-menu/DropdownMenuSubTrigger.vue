@@ -1,5 +1,5 @@
 <script setup>
-import { ChevronRight } from "@lucide/vue";
+import { ChevronRight } from "lucide-vue-next";
 import { reactiveOmit } from "@vueuse/core";
 import { cn } from "@/lib/utils";
 import { DropdownMenuSubTrigger, useForwardProps } from "reka-ui";

@@ -1,5 +1,5 @@
 <script setup>
-import { X } from "@lucide/vue";
+import { X } from "lucide-vue-next";
 import { reactiveOmit } from "@vueuse/core";
 import { cn } from "@/lib/utils";
 import {

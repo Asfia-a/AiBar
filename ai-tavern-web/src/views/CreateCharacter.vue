@@ -362,7 +362,7 @@
               <Save v-else class="size-4" />
               保存草稿
             </Button>
-            <Button class="text-background" :disabled="saving" @click="save(true)">
+            <Button style="color: var(--background)" :disabled="saving" @click="save(true)">
               <LoaderCircle v-if="saving" class="size-4 animate-spin" />
               <Send v-else class="size-4" />
               保存并提交审核

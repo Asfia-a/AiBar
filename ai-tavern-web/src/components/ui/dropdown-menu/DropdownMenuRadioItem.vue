@@ -1,5 +1,5 @@
 <script setup>
-import { Circle } from "@lucide/vue";
+import { Circle } from "lucide-vue-next";
 import { reactiveOmit } from "@vueuse/core";
 import { cn } from "@/lib/utils";
 import {
