@@ -11,13 +11,25 @@
   >
     <div class="absolute inset-0 wt-grid pointer-events-none" aria-hidden="true" />
 
-    <div class="absolute top-3 left-3 z-10 flex flex-wrap gap-1">
-      <el-button size="small" @click.stop="zoomBy(1.15)">放大</el-button>
-      <el-button size="small" @click.stop="zoomBy(1 / 1.15)">缩小</el-button>
-      <el-button size="small" @click.stop="fitView">适应画布</el-button>
-      <el-button size="small" type="warning" plain @click.stop="emit('add-root')">+ 世界根</el-button>
+    <div class="absolute left-3 top-3 z-10 flex flex-wrap gap-1.5">
+      <Button variant="outline" size="xs" @click.stop="zoomBy(1.15)">
+        <ZoomIn class="size-3" />
+        放大
+      </Button>
+      <Button variant="outline" size="xs" @click.stop="zoomBy(1 / 1.15)">
+        <ZoomOut class="size-3" />
+        缩小
+      </Button>
+      <Button variant="outline" size="xs" @click.stop="fitView">
+        <Maximize class="size-3" />
+        适应画布
+      </Button>
+      <Button size="xs" @click.stop="emit('add-root')">
+        <Plus class="size-3" />
+        世界根
+      </Button>
     </div>
-    <p class="absolute bottom-3 left-3 z-10 text-[11px] text-tavern-muted pointer-events-none">
+    <p class="pointer-events-none absolute bottom-3 left-3 z-10 text-[11px] text-muted-foreground">
       滚轮缩放 · 拖动画布 · 点选节点 · 双击空白新建世界根
     </p>
 
@@ -35,8 +47,8 @@
           :key="i"
           :d="e.d"
           fill="none"
-          stroke="rgba(212, 168, 98, 0.45)"
-          stroke-width="2"
+          stroke="rgba(255, 255, 255, 0.18)"
+          stroke-width="1.5"
         />
       </svg>
 
@@ -67,10 +79,10 @@
             <button type="button" class="wt-icon-btn danger" title="删除" @click="emit('remove', n.id)">×</button>
           </div>
         </div>
-        <div class="mt-1.5 text-sm font-medium text-tavern-100 leading-snug line-clamp-2">
+        <div class="mt-1.5 line-clamp-2 text-sm font-medium leading-snug text-foreground">
           {{ n.label || '未命名' }}
         </div>
-        <p v-if="n.summary" class="mt-1 text-[11px] text-tavern-muted line-clamp-2 leading-relaxed">
+        <p v-if="n.summary" class="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
           {{ n.summary }}
         </p>
       </div>
@@ -78,7 +90,7 @@
 
     <div
       v-if="!layoutNodes.length"
-      class="absolute inset-0 flex items-center justify-center text-sm text-tavern-muted pointer-events-none"
+      class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground"
     >
       还没有节点 — 用上方 AI 生成，或点「+ 世界根」
     </div>
@@ -87,6 +99,8 @@
 
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { Maximize, Plus, ZoomIn, ZoomOut } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
 
 const props = defineProps({
   tree: { type: Array, default: () => [] },
@@ -107,17 +121,18 @@ const pan = reactive({ x: 40, y: 56 })
 const panning = ref(false)
 const panOrigin = reactive({ x: 0, y: 0, px: 0, py: 0 })
 
+/* 节点类型配色：低饱和色相，只用来区分类型，不抢内容 */
 const TYPE_COLORS = {
-  world: '#E6A23C',
-  era: '#B37FEB',
-  region: '#409EFF',
-  faction: '#F56C6C',
-  lore: '#67C23A',
-  figure: '#D4A862',
+  world: '#c9a227',
+  era: '#a78bfa',
+  region: '#60a5fa',
+  faction: '#f87171',
+  lore: '#4ade80',
+  figure: '#e5c07b',
 }
 
 function typeColor(t) {
-  return TYPE_COLORS[t] || '#909399'
+  return TYPE_COLORS[t] || '#a3a3a3'
 }
 
 function typeLabel(t) {
@@ -295,21 +310,22 @@ watch(
     await nextTick()
     fitView()
   },
+  // 组件挂载时树上已经有数据也要先适应一次画布，否则深层节点会被裁掉
+  { immediate: true },
 )
 </script>
 
 <style scoped>
 .wt-viewport {
-  background: linear-gradient(160deg, rgba(28, 22, 18, 0.95), rgba(18, 14, 12, 0.98));
-  border: 1px solid rgba(212, 168, 98, 0.18);
+  background: var(--card);
+  border: 1px solid var(--border);
   cursor: grab;
 }
 .wt-viewport:active {
   cursor: grabbing;
 }
 .wt-grid {
-  background-image:
-    radial-gradient(rgba(212, 168, 98, 0.08) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 .wt-node {
@@ -317,7 +333,7 @@ watch(
   padding: 10px 12px;
   border-radius: 12px;
   border: 1.5px solid;
-  background: rgba(32, 26, 22, 0.92);
+  background: var(--secondary);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.15s ease;
@@ -328,25 +344,26 @@ watch(
 }
 .wt-node.is-selected {
   box-shadow:
-    0 0 0 2px rgba(212, 168, 98, 0.55),
+    0 0 0 2px rgba(255, 255, 255, 0.55),
     0 12px 28px rgba(0, 0, 0, 0.45);
 }
 .wt-icon-btn {
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: #e8dcc8;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 .wt-icon-btn:hover {
-  background: rgba(212, 168, 98, 0.25);
+  background: var(--accent);
 }
 .wt-icon-btn.danger:hover {
-  background: rgba(245, 108, 108, 0.35);
+  background: rgba(248, 113, 113, 0.25);
   color: #fecaca;
 }
 </style>

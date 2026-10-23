@@ -1,187 +1,380 @@
 <template>
   <div class="space-y-6">
-    <header class="vm-head">
-      <div class="relative z-[1] max-w-2xl space-y-2">
-        <p class="vm-eyebrow">Runtime · Metrics</p>
-        <h1 class="font-display text-4xl text-tavern-100">运行机制可视化</h1>
-        <p class="text-sm text-tavern-muted leading-relaxed">
-          系统内部平时看不见的部分都记在这儿：上下文被裁了多少、Token 花在哪、缓存命中多少、MCP 调用多久。
+    <header class="flex flex-wrap items-end justify-between gap-4">
+      <div class="space-y-1.5">
+        <h1 class="text-2xl font-semibold tracking-tight">运行机制可视化</h1>
+        <p class="max-w-2xl text-sm text-muted-foreground">
+          把上下文裁剪、Token 去向、缓存命中与 MCP 调用这些平时看不见的部分摊开来看。
         </p>
       </div>
-      <div class="relative z-[1] flex items-center gap-2">
-        <el-button :loading="loading" @click="loadAll">刷新</el-button>
-        <el-button text @click="doReset">重置统计</el-button>
+      <div class="flex items-center gap-2">
+        <Button variant="outline" :disabled="loading" @click="loadAll">
+          <LoaderCircle v-if="loading" class="size-4 animate-spin" />
+          <RefreshCw v-else class="size-4" />
+          刷新
+        </Button>
+        <Button variant="ghost" :disabled="loading" @click="doReset">
+          <Trash2 class="size-4" />
+          重置
+        </Button>
       </div>
     </header>
 
-    <el-empty v-if="!loading && !overview.hasData && !cacheRows.length" description="还没有运行数据，先去聊几句">
-      <el-button type="primary" @click="$router.push('/chat')">去对话</el-button>
-    </el-empty>
+    <div v-if="loading" class="space-y-6">
+      <div class="grid gap-3 sm:grid-cols-3">
+        <Skeleton v-for="i in 3" :key="i" class="h-28 rounded-xl" />
+      </div>
+      <Skeleton class="h-80 rounded-xl" />
+      <Skeleton class="h-96 rounded-xl" />
+    </div>
+
+    <EmptyState
+      v-else-if="!hasAnyData"
+      text="还没有运行数据"
+      hint="先去聊几句，这里会自动记录上下文、Token 与 MCP 调用"
+    >
+      <Button class="mt-2 text-background" size="sm" @click="$router.push('/chat')">
+        <MessageSquare class="size-4" />
+        去对话
+        <ArrowRight class="size-4" />
+      </Button>
+    </EmptyState>
 
     <template v-else>
-      <!-- 概览数字 -->
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="tavern-card p-4">
-          <p class="text-xs text-tavern-muted">上下文平均占用</p>
-          <p class="mt-1 font-display text-2xl text-tavern-100">
-            {{ (overview.avgUsage * 100 || 0).toFixed(1) }}<span class="text-sm">%</span>
-          </p>
-          <p class="mt-1 text-xs opacity-60">窗口上限 {{ overview.maxWindow || 0 }} 轮</p>
-        </div>
-        <div class="tavern-card p-4">
-          <p class="text-xs text-tavern-muted">采样次数</p>
-          <p class="mt-1 font-display text-2xl text-tavern-100">{{ overview.sampleCount || 0 }}</p>
-          <p class="mt-1 text-xs opacity-60">最近一次对话的窗口裁剪情况</p>
-        </div>
-        <div class="tavern-card p-4">
-          <p class="text-xs text-tavern-muted">今日 Token</p>
-          <p class="mt-1 font-display text-2xl text-tavern-100">{{ formatNum(token.todayTokens) }}</p>
-          <p class="mt-1 text-xs opacity-60">对话消耗，不含叙事生成</p>
-        </div>
-        <div class="tavern-card p-4">
-          <p class="text-xs text-tavern-muted">MCP 调用</p>
-          <p class="mt-1 font-display text-2xl text-tavern-100">{{ mcpRows.length }}</p>
-          <p class="mt-1 text-xs opacity-60">
-            平均 {{ mcpRows.length ? Math.round(mcpAvg) : 0 }} ms
-          </p>
-        </div>
-      </div>
-
-      <!-- 上下文占用条 + 曲线 -->
-      <section class="tavern-card p-5 space-y-4">
-        <div class="flex items-baseline justify-between gap-3 flex-wrap">
-          <h2 class="text-sm font-semibold text-tavern-200">上下文占用</h2>
-          <span v-if="current" class="text-xs text-tavern-muted">
-            本次用了 {{ current.usedRounds }} / {{ current.window }} 轮
-            <span v-if="current.droppedRounds > 0" class="text-amber-400">
-              （丢弃 {{ current.droppedRounds }} 条更早的消息）
-            </span>
-          </span>
-        </div>
-
-        <!-- 占用条：system 提示 + 历史对话 + 输出预留 三段 -->
-        <div v-if="current" class="space-y-2">
-          <div class="flex h-6 w-full overflow-hidden rounded border border-tavern-700/50">
-            <div
-              class="flex items-center justify-center text-[10px] text-tavern-900"
-              :style="{ width: `${sysPct}%` }"
-              title="system 提示"
-            >
-              system {{ current.systemChars }}
+      <!-- 摘要 -->
+      <section class="grid gap-3 sm:grid-cols-3">
+        <Card class="gap-0 py-4">
+          <CardContent class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-muted-foreground">上下文占用</span>
+              <Gauge class="size-4 text-muted-foreground" />
             </div>
-            <div
-              class="flex items-center justify-center text-[10px] text-tavern-900"
-              :style="{ width: `${diaPct}%` }"
-              title="历史对话"
-            >
-              对话 {{ current.dialogueChars }}
+            <p class="text-2xl font-semibold tabular-nums">
+              {{ contextUsagePct.toFixed(1) }}<span class="text-sm font-normal text-muted-foreground">%</span>
+            </p>
+            <p class="text-xs text-muted-foreground">
+              历史均值 {{ avgUsagePct.toFixed(1) }}% · 窗口 {{ overview.maxWindow || 0 }} 轮
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card class="gap-0 py-4">
+          <CardContent class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-muted-foreground">本次积分</span>
+              <Coins class="size-4 text-muted-foreground" />
             </div>
-            <div
-              v-if="outPct > 0"
-              class="flex items-center justify-center text-[10px] opacity-70"
-              :style="{ width: `${outPct}%` }"
-              title="输出预留"
-            >
-              输出
+            <p class="text-2xl font-semibold tabular-nums">
+              {{ formatNum(estimatedPoints) }}
+            </p>
+            <p class="text-xs text-muted-foreground">按 1,000 Token ≈ 1 积分估算</p>
+          </CardContent>
+        </Card>
+
+        <Card class="gap-0 py-4">
+          <CardContent class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-muted-foreground">消息留存</span>
+              <MessageSquare class="size-4 text-muted-foreground" />
             </div>
-            <div class="flex-1 bg-transparent"></div>
-          </div>
-          <p class="text-[11px] text-tavern-muted">
-            估算输入 {{ current.estimatedTokens }} tokens / 输出上限 {{ current.maxTokens }} tokens
-            —— 输入加输出超出模型窗口时，尾部会被截断，所以裁剪发生在这里。
-          </p>
-        </div>
-
-        <div ref="contextRef" class="h-56 w-full"></div>
-      </section>
-
-      <!-- Token 明细 -->
-      <div class="grid gap-4 lg:grid-cols-2">
-        <section class="tavern-card p-5 space-y-3">
-          <h2 class="text-sm font-semibold text-tavern-200">Token 明细</h2>
-          <el-table :data="token.byType || []" size="small" empty-text="暂无消耗记录">
-            <el-table-column prop="type" label="用途" width="90">
-              <template #default="{ row }">{{ typeLabel(row.type) }}</template>
-            </el-table-column>
-            <el-table-column prop="calls" label="调用次数" width="90" />
-            <el-table-column label="总 Token">
-              <template #default="{ row }">{{ formatNum(row.tokens) }}</template>
-            </el-table-column>
-            <el-table-column label="平均">
-              <template #default="{ row }">{{ Math.round(row.avg_tokens || 0) }}</template>
-            </el-table-column>
-          </el-table>
-
-          <p v-if="(token.topSessions || []).length" class="pt-1 text-xs font-medium text-tavern-muted">
-            最费 Token 的会话
-          </p>
-          <el-table v-if="(token.topSessions || []).length" :data="token.topSessions" size="small">
-            <el-table-column prop="session_id" label="会话 ID" width="100" />
-            <el-table-column prop="calls" label="轮数" width="70" />
-            <el-table-column label="Token">
-              <template #default="{ row }">{{ formatNum(row.tokens) }}</template>
-            </el-table-column>
-          </el-table>
-        </section>
-
-        <!-- 缓存命中 -->
-        <section class="tavern-card p-5 space-y-3">
-          <div class="flex items-baseline justify-between gap-3">
-            <h2 class="text-sm font-semibold text-tavern-200">缓存命中对比</h2>
-            <span class="text-xs text-tavern-muted">读缓存 vs 查库</span>
-          </div>
-          <el-table :data="cacheRows" size="small" empty-text="暂无缓存记录">
-            <el-table-column prop="name" label="业务" width="120">
-              <template #default="{ row }">{{ cacheLabel(row.name) }}</template>
-            </el-table-column>
-            <el-table-column prop="hit" label="命中" width="70" />
-            <el-table-column prop="miss" label="回源" width="70" />
-            <el-table-column label="命中率">
-              <template #default="{ row }">
-                <span :class="row.hitRate >= 50 ? 'text-emerald-400' : 'text-amber-400'">
-                  {{ row.hitRate }}%
-                </span>
+            <p class="text-2xl font-semibold tabular-nums">{{ retentionLabel }}</p>
+            <p class="text-xs text-muted-foreground">
+              <template v-if="current">
+                保留 {{ current.usedRounds || 0 }} 轮 · 裁剪 {{ current.droppedRounds || 0 }} 轮
               </template>
-            </el-table-column>
-            <el-table-column label="命中耗时">
-              <template #default="{ row }">{{ row.avgHitCost }} ms</template>
-            </el-table-column>
-            <el-table-column label="回源耗时">
-              <template #default="{ row }">{{ row.avgMissCost }} ms</template>
-            </el-table-column>
-          </el-table>
-          <div ref="cacheRef" class="h-48 w-full"></div>
-        </section>
-      </div>
-
-      <!-- MCP 时间线 -->
-      <section class="tavern-card p-5 space-y-3">
-        <h2 class="text-sm font-semibold text-tavern-200">MCP 调用时间线</h2>
-        <el-table :data="mcpRows" size="small" empty-text="暂无 MCP 调用记录" max-height="320">
-          <el-table-column label="时间" width="160">
-            <template #default="{ row }">{{ formatTime(row.at) }}</template>
-          </el-table-column>
-          <el-table-column prop="tool" label="工具" />
-          <el-table-column label="耗时">
-            <template #default="{ row }">{{ row.cost }} ms</template>
-          </el-table-column>
-          <el-table-column label="结果" width="90">
-            <template #default="{ row }">
-              <el-tag :type="row.success ? 'success' : 'danger'" size="small" effect="plain">
-                {{ row.success ? '成功' : '失败' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-        </el-table>
+              <template v-else>暂无窗口采样</template>
+            </p>
+          </CardContent>
+        </Card>
       </section>
+
+      <!-- 上下文窗口 -->
+      <Card>
+        <CardHeader>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="space-y-1">
+              <CardTitle class="text-base">上下文窗口</CardTitle>
+              <CardDescription>system 提示、历史对话与输出预留的占用构成。</CardDescription>
+            </div>
+            <div v-if="current" class="text-right text-xs text-muted-foreground">
+              <p>本次 {{ current.usedRounds }} / {{ current.window }} 轮</p>
+              <p v-if="current.droppedRounds > 0" class="text-foreground">
+                已裁剪 {{ current.droppedRounds }} 条早期消息
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <div v-if="current" class="space-y-3">
+            <div class="flex h-7 w-full overflow-hidden rounded-lg bg-muted/60">
+              <div
+                v-if="sysPct > 0"
+                class="flex items-center justify-center overflow-hidden bg-foreground px-1 text-[10px] font-medium text-background"
+                :style="{ width: `${sysPct}%` }"
+                title="system 提示"
+              >
+                <span class="truncate">system</span>
+              </div>
+              <div
+                v-if="diaPct > 0"
+                class="flex items-center justify-center overflow-hidden bg-foreground/55 px-1 text-[10px] font-medium text-background"
+                :style="{ width: `${diaPct}%` }"
+                title="历史对话"
+              >
+                <span class="truncate">对话</span>
+              </div>
+              <div
+                v-if="outPct > 0"
+                class="flex items-center justify-center overflow-hidden bg-foreground/20 px-1 text-[10px] font-medium text-foreground"
+                :style="{ width: `${outPct}%` }"
+                title="输出预留"
+              >
+                <span class="truncate">输出</span>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+              <span class="flex items-center gap-1.5">
+                <span class="size-2 rounded-[2px] bg-foreground" />
+                system {{ current.systemChars }} 字符
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="size-2 rounded-[2px] bg-foreground/55" />
+                对话 {{ current.dialogueChars }} 字符
+              </span>
+              <span v-if="outPct > 0" class="flex items-center gap-1.5">
+                <span class="size-2 rounded-[2px] bg-foreground/20" />
+                输出预留
+              </span>
+            </div>
+
+            <p class="text-[11px] leading-relaxed text-muted-foreground">
+              估算输入 {{ formatNum(current.estimatedTokens) }} tokens
+              <template v-if="current.maxTokens">/ 输出上限 {{ formatNum(current.maxTokens) }} tokens</template>
+              ；超出窗口时会从最早的消息开始裁剪。
+            </p>
+          </div>
+
+          <div class="flex items-center justify-between gap-2 border-t border-border/60 pt-4">
+            <p class="text-xs font-medium">窗口占用趋势</p>
+            <p class="text-xs text-muted-foreground">最近 {{ contextRows.length }} 次采样</p>
+          </div>
+          <div v-if="contextRows.length" ref="contextRef" class="h-[220px] w-full" />
+          <EmptyState
+            v-else
+            text="暂无上下文采样"
+            hint="对话产生后会在这里画出窗口占用曲线"
+          />
+        </CardContent>
+      </Card>
+
+      <!-- 图表与明细 Tab -->
+      <Card class="gap-0 overflow-hidden py-0">
+        <Tabs v-model="activeTab" class="gap-0">
+          <div class="border-b border-border/60 p-3 sm:p-4">
+            <TabsList class="w-full sm:w-fit">
+              <TabsTrigger value="cache" class="flex-1 sm:flex-none sm:px-4">缓存对比</TabsTrigger>
+              <TabsTrigger value="token" class="flex-1 sm:flex-none sm:px-4">Token 明细</TabsTrigger>
+              <TabsTrigger value="mcp" class="flex-1 sm:flex-none sm:px-4">MCP 时间线</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <!-- 缓存对比 -->
+          <TabsContent value="cache" class="mt-0 space-y-4 p-4 sm:p-5">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div class="space-y-1">
+                <h2 class="text-sm font-medium">缓存命中对比</h2>
+                <p class="text-xs text-muted-foreground">按业务对比读缓存与回源次数。</p>
+              </div>
+              <span class="text-xs text-muted-foreground">{{ cacheRows.length }} 个业务</span>
+            </div>
+
+            <div v-if="cacheRows.length" ref="cacheRef" class="h-[240px] w-full" />
+            <EmptyState
+              v-else
+              text="暂无缓存记录"
+              hint="访问热门角色或标签列表后会留下命中与回源数据"
+            />
+
+            <div v-if="cacheRows.length" class="overflow-x-auto">
+              <table class="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr
+                    class="border-b border-border/60 text-left text-xs font-normal text-muted-foreground"
+                  >
+                    <th class="pb-2 pr-4 font-normal">业务</th>
+                    <th class="pb-2 pr-4 text-right font-normal">命中</th>
+                    <th class="pb-2 pr-4 text-right font-normal">回源</th>
+                    <th class="pb-2 pr-4 text-right font-normal">命中率</th>
+                    <th class="pb-2 pr-4 text-right font-normal">命中耗时</th>
+                    <th class="pb-2 text-right font-normal">回源耗时</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in cacheRows"
+                    :key="row.name"
+                    class="border-b border-border/50 last:border-0"
+                  >
+                    <td class="py-3 pr-4">{{ cacheLabel(row.name) }}</td>
+                    <td class="py-3 pr-4 text-right tabular-nums">{{ row.hit }}</td>
+                    <td class="py-3 pr-4 text-right tabular-nums">{{ row.miss }}</td>
+                    <td class="py-3 pr-4 text-right">
+                      <Badge
+                        :variant="row.hitRate >= 50 ? 'secondary' : 'outline'"
+                        class="font-normal tabular-nums"
+                      >
+                        {{ row.hitRate }}%
+                      </Badge>
+                    </td>
+                    <td class="py-3 pr-4 text-right tabular-nums text-muted-foreground">
+                      {{ row.avgHitCost }} ms
+                    </td>
+                    <td class="py-3 text-right tabular-nums text-muted-foreground">
+                      {{ row.avgMissCost }} ms
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+
+          <!-- Token 明细 -->
+          <TabsContent value="token" class="mt-0 space-y-5 p-4 sm:p-5">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div class="space-y-1">
+                <h2 class="text-sm font-medium">Token 明细</h2>
+                <p class="text-xs text-muted-foreground">按用途汇总调用次数与消耗。</p>
+              </div>
+              <span class="text-xs text-muted-foreground">
+                今日 {{ formatNum(token.todayTokens) }} Token
+              </span>
+            </div>
+
+            <div v-if="(token.byType || []).length" class="overflow-x-auto">
+              <table class="w-full min-w-[520px] text-sm">
+                <thead>
+                  <tr
+                    class="border-b border-border/60 text-left text-xs font-normal text-muted-foreground"
+                  >
+                    <th class="pb-2 pr-4 font-normal">用途</th>
+                    <th class="pb-2 pr-4 text-right font-normal">调用次数</th>
+                    <th class="pb-2 pr-4 text-right font-normal">总 Token</th>
+                    <th class="pb-2 text-right font-normal">平均</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in token.byType"
+                    :key="row.type"
+                    class="border-b border-border/50 last:border-0"
+                  >
+                    <td class="py-3 pr-4">{{ typeLabel(row.type) }}</td>
+                    <td class="py-3 pr-4 text-right tabular-nums">{{ row.calls }}</td>
+                    <td class="py-3 pr-4 text-right tabular-nums">
+                      {{ formatNum(row.tokens) }}
+                    </td>
+                    <td class="py-3 text-right tabular-nums text-muted-foreground">
+                      {{ Math.round(row.avg_tokens || 0) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <EmptyState v-else text="暂无消耗记录" hint="对话和叙事生成会按用途记录 Token" />
+
+            <div v-if="(token.topSessions || []).length" class="space-y-3">
+              <div class="flex items-end justify-between gap-3">
+                <h3 class="text-sm font-medium">最费 Token 的会话</h3>
+                <span class="text-xs text-muted-foreground">按总消耗排序</span>
+              </div>
+              <div class="divide-y divide-border/60 rounded-xl border border-border/70">
+                <div
+                  v-for="(row, index) in token.topSessions"
+                  :key="row.session_id"
+                  class="flex items-center justify-between gap-3 px-3 py-3"
+                >
+                  <div class="flex min-w-0 items-center gap-2.5">
+                    <span class="w-4 shrink-0 text-center text-xs text-muted-foreground">
+                      {{ index + 1 }}
+                    </span>
+                    <span class="truncate font-mono text-xs">{{ row.session_id }}</span>
+                  </div>
+                  <span class="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {{ row.calls }} 轮 · {{ formatNum(row.tokens) }} Token
+                  </span>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <!-- MCP 时间线 -->
+          <TabsContent value="mcp" class="mt-0 space-y-4 p-4 sm:p-5">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div class="space-y-1">
+                <h2 class="text-sm font-medium">MCP 调用时间线</h2>
+                <p class="text-xs text-muted-foreground">最近 50 次工具调用，含耗时与结果。</p>
+              </div>
+              <span class="text-xs text-muted-foreground">
+                {{ mcpRows.length }} 次 · 平均 {{ Math.round(mcpAvg) }} ms
+              </span>
+            </div>
+
+            <EmptyState
+              v-if="!mcpRows.length"
+              text="暂无 MCP 调用记录"
+              hint="调用外部工具后会在这里留下时间线"
+            />
+
+            <div v-else class="max-h-[420px] overflow-y-auto pr-1">
+              <ol class="relative ml-1 border-l border-border/60">
+                <li
+                  v-for="(row, index) in mcpRecent"
+                  :key="`${row.at}-${row.tool}-${index}`"
+                  class="relative py-3 pl-5"
+                >
+                  <span
+                    class="absolute -left-[4.5px] top-4 size-2 rounded-full"
+                    :class="row.success ? 'bg-foreground' : 'bg-muted-foreground'"
+                  />
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <span class="truncate text-sm font-medium">{{ row.tool }}</span>
+                      <Badge
+                        :variant="row.success ? 'secondary' : 'outline'"
+                        class="font-normal"
+                      >
+                        {{ row.success ? '成功' : '失败' }}
+                      </Badge>
+                    </div>
+                    <span class="text-xs tabular-nums text-muted-foreground">
+                      {{ row.cost }} ms
+                    </span>
+                  </div>
+                  <p class="mt-1 text-[11px] text-muted-foreground">{{ formatTime(row.at) }}</p>
+                </li>
+              </ol>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </Card>
     </template>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import * as echarts from 'echarts'
+import {
+  ArrowRight,
+  Coins,
+  Gauge,
+  LoaderCircle,
+  MessageSquare,
+  RefreshCw,
+  Trash2,
+} from 'lucide-vue-next'
 import {
   getCacheComparison,
   getContextOverview,
@@ -190,6 +383,12 @@ import {
   getTokenDetail,
   resetMetrics,
 } from '../api/metrics'
+import EmptyState from '../components/EmptyState.vue'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 const loading = ref(false)
 const overview = ref({ hasData: false })
@@ -197,6 +396,7 @@ const contextRows = ref([])
 const cacheRows = ref([])
 const mcpRows = ref([])
 const token = ref({})
+const activeTab = ref('cache')
 
 const contextRef = ref(null)
 const cacheRef = ref(null)
@@ -205,30 +405,96 @@ let cacheChart = null
 
 const current = computed(() => overview.value.current || null)
 
+const avgUsagePct = computed(() => Number(overview.value.avgUsage || 0) * 100)
+
+const contextUsagePct = computed(() => {
+  const c = current.value
+  if (!c) return avgUsagePct.value
+  const usage = Number(c.usage)
+  if (Number.isFinite(usage)) return usage * 100
+  const window = Number(c.window)
+  if (window) return (Number(c.usedRounds || 0) / window) * 100
+  return 0
+})
+
+const retentionPct = computed(() => {
+  const c = current.value
+  if (!c) return null
+  const used = Number(c.usedRounds || 0)
+  const dropped = Number(c.droppedRounds || 0)
+  const total = used + dropped
+  return total ? Math.round((used / total) * 100) : 100
+})
+
+const retentionLabel = computed(() =>
+  retentionPct.value == null ? '—' : `${retentionPct.value}%`,
+)
+
+const estimatedPoints = computed(() => {
+  const c = current.value
+  if (!c) return 0
+  const tokens = Number(c.estimatedTokens || 0) + Number(c.maxTokens || 0)
+  return Math.ceil(tokens / 1000)
+})
+
+const hasAnyData = computed(() =>
+  Boolean(overview.value.hasData || cacheRows.value.length),
+)
+
+const mcpRecent = computed(() => [...mcpRows.value].reverse())
+
 /** 占用条三段宽度。输入部分按 system+对话占输入预算的比例切分，右侧留输出空间 */
 const sysPct = computed(() => {
   const c = current.value
   if (!c) return 0
-  const inputBudget = (c.estimatedTokens + c.maxTokens) || 1
-  return Math.min(Math.round((c.systemChars / 1.5 / inputBudget) * 100), 100)
+  const inputBudget = (Number(c.estimatedTokens) || 0) + (Number(c.maxTokens) || 0) || 1
+  return Math.min(
+    Math.round(((Number(c.systemChars) || 0) / 1.5 / inputBudget) * 100),
+    100,
+  )
 })
+
 const diaPct = computed(() => {
   const c = current.value
   if (!c) return 0
-  const inputBudget = (c.estimatedTokens + c.maxTokens) || 1
-  return Math.min(Math.round((c.dialogueChars / 1.5 / inputBudget) * 100), 100 - sysPct.value)
+  const inputBudget = (Number(c.estimatedTokens) || 0) + (Number(c.maxTokens) || 0) || 1
+  return Math.min(
+    Math.round(((Number(c.dialogueChars) || 0) / 1.5 / inputBudget) * 100),
+    100 - sysPct.value,
+  )
 })
+
 const outPct = computed(() => {
   const c = current.value
   if (!c) return 0
-  const inputBudget = (c.estimatedTokens + c.maxTokens) || 1
-  return Math.min(Math.round((c.maxTokens / inputBudget) * 100), 100 - sysPct.value - diaPct.value)
+  const inputBudget = (Number(c.estimatedTokens) || 0) + (Number(c.maxTokens) || 0) || 1
+  return Math.min(
+    Math.round(((Number(c.maxTokens) || 0) / inputBudget) * 100),
+    100 - sysPct.value - diaPct.value,
+  )
 })
 
 const mcpAvg = computed(() => {
   if (!mcpRows.value.length) return 0
-  return mcpRows.value.reduce((s, r) => s + (r.cost || 0), 0) / mcpRows.value.length
+  return mcpRows.value.reduce((sum, row) => sum + (row.cost || 0), 0) / mcpRows.value.length
 })
+
+const CHART_TEXT = '#a3a3a3'
+const CHART_STRONG = '#e5e5e5'
+const CHART_DIM = '#525252'
+const CHART_AXIS = 'rgba(255,255,255,0.15)'
+const CHART_GRID = 'rgba(255,255,255,0.08)'
+
+function tooltipStyle() {
+  return {
+    backgroundColor: '#171717',
+    borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    padding: [8, 10],
+    textStyle: { color: '#e5e5e5', fontSize: 11 },
+    extraCssText: 'border-radius:8px;',
+  }
+}
 
 async function loadAll() {
   loading.value = true
@@ -245,39 +511,53 @@ async function loadAll() {
     cacheRows.value = cache || []
     mcpRows.value = mcp || []
     token.value = tk || {}
-    await nextTick()
-    renderContext()
-    renderCache()
   } catch (e) {
-    ElMessage.error(e.message || '加载失败')
+    toast.error(e.message || '加载失败')
   } finally {
     loading.value = false
   }
+
+  await nextTick()
+  renderContext()
+  renderCache()
 }
 
 function renderContext() {
   if (!contextRef.value || !contextRows.value.length) return
+  if (contextChart) {
+    contextChart.dispose()
+    contextChart = null
+  }
   contextChart = echarts.init(contextRef.value)
   contextChart.setOption({
     backgroundColor: 'transparent',
-    grid: { left: 40, right: 16, top: 20, bottom: 28 },
-    tooltip: { trigger: 'axis' },
+    grid: { left: 44, right: 16, top: 24, bottom: 28 },
+    tooltip: {
+      trigger: 'axis',
+      ...tooltipStyle(),
+      valueFormatter: (value) => `${Math.round(Number(value) * 100)}%`,
+    },
     xAxis: {
       type: 'category',
-      data: contextRows.value.map((r) => formatTime(r.at).slice(5)),
-      axisLabel: { color: '#a99578', fontSize: 10 },
-      axisLine: { lineStyle: { color: 'rgba(212,168,83,0.25)' } },
+      data: contextRows.value.map((row) => formatTime(row.at).slice(5)),
+      axisLabel: { color: CHART_TEXT, fontSize: 10, hideOverlap: true },
+      axisLine: { lineStyle: { color: CHART_AXIS } },
+      axisTick: { show: false },
     },
     yAxis: {
       type: 'value',
       name: '占用率',
+      min: 0,
       max: 1,
+      nameTextStyle: { color: CHART_TEXT, fontSize: 10 },
       axisLabel: {
-        color: '#a99578',
+        color: CHART_TEXT,
         fontSize: 10,
-        formatter: (v) => `${Math.round(v * 100)}%`,
+        formatter: (value) => `${Math.round(value * 100)}%`,
       },
-      splitLine: { lineStyle: { color: 'rgba(212,168,83,0.12)' } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: CHART_GRID } },
     },
     series: [
       {
@@ -285,19 +565,24 @@ function renderContext() {
         type: 'line',
         smooth: true,
         symbol: 'none',
-        data: contextRows.value.map((r) => r.usage),
-        lineStyle: { color: '#d4a853', width: 2 },
+        data: contextRows.value.map((row) => row.usage),
+        lineStyle: { color: CHART_STRONG, width: 2 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(212,168,83,0.28)' },
-            { offset: 1, color: 'rgba(212,168,83,0.02)' },
+            { offset: 0, color: 'rgba(229,229,229,0.18)' },
+            { offset: 1, color: 'rgba(229,229,229,0.02)' },
           ]),
         },
         markLine: {
           silent: true,
           symbol: 'none',
-          data: [{ yAxis: 1, label: { formatter: '触顶裁剪', color: '#c08457', fontSize: 10 } }],
-          lineStyle: { color: 'rgba(192,132,87,0.5)', type: 'dashed' },
+          data: [{ yAxis: 1 }],
+          label: {
+            formatter: '触顶裁剪',
+            color: CHART_TEXT,
+            fontSize: 10,
+          },
+          lineStyle: { color: 'rgba(163,163,163,0.45)', type: 'dashed' },
         },
       },
     ],
@@ -306,37 +591,61 @@ function renderContext() {
 
 function renderCache() {
   if (!cacheRef.value || !cacheRows.value.length) return
+  if (cacheChart) {
+    cacheChart.dispose()
+    cacheChart = null
+  }
   cacheChart = echarts.init(cacheRef.value)
   cacheChart.setOption({
     backgroundColor: 'transparent',
-    grid: { left: 46, right: 16, top: 20, bottom: 24 },
-    tooltip: { trigger: 'axis' },
-    legend: { textStyle: { color: '#a99578', fontSize: 10 }, top: 0 },
+    grid: { left: 42, right: 18, top: 36, bottom: 26 },
+    tooltip: {
+      trigger: 'axis',
+      ...tooltipStyle(),
+      valueFormatter: (value) => `${value} 次`,
+    },
+    legend: {
+      top: 0,
+      right: 0,
+      itemWidth: 12,
+      itemHeight: 2,
+      textStyle: { color: CHART_TEXT, fontSize: 10 },
+    },
     xAxis: {
       type: 'category',
-      data: cacheRows.value.map((r) => cacheLabel(r.name)),
-      axisLabel: { color: '#a99578', fontSize: 10 },
-      axisLine: { lineStyle: { color: 'rgba(212,168,83,0.25)' } },
+      data: cacheRows.value.map((row) => cacheLabel(row.name)),
+      axisLabel: { color: CHART_TEXT, fontSize: 10 },
+      axisLine: { lineStyle: { color: CHART_AXIS } },
+      axisTick: { show: false },
     },
     yAxis: {
       type: 'value',
-      axisLabel: { color: '#a99578', fontSize: 10 },
-      splitLine: { lineStyle: { color: 'rgba(212,168,83,0.12)' } },
+      minInterval: 1,
+      axisLabel: { color: CHART_TEXT, fontSize: 10 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: CHART_GRID } },
     },
     series: [
       {
         name: '命中',
-        type: 'bar',
-        stack: 'total',
-        data: cacheRows.value.map((r) => r.hit),
-        itemStyle: { color: '#5a9e6f' },
+        type: 'line',
+        smooth: 0.3,
+        symbol: 'circle',
+        symbolSize: 6,
+        data: cacheRows.value.map((row) => row.hit),
+        itemStyle: { color: CHART_STRONG },
+        lineStyle: { color: CHART_STRONG, width: 2 },
       },
       {
         name: '回源',
-        type: 'bar',
-        stack: 'total',
-        data: cacheRows.value.map((r) => r.miss),
-        itemStyle: { color: '#8a6b4a' },
+        type: 'line',
+        smooth: 0.3,
+        symbol: 'circle',
+        symbolSize: 6,
+        data: cacheRows.value.map((row) => row.miss),
+        itemStyle: { color: CHART_DIM },
+        lineStyle: { color: CHART_DIM, width: 2 },
       },
     ],
   })
@@ -345,10 +654,10 @@ function renderCache() {
 async function doReset() {
   try {
     await resetMetrics()
-    ElMessage.success('已重置')
-    loadAll()
+    toast.success('已重置')
+    await loadAll()
   } catch (e) {
-    ElMessage.error(e.message || '重置失败')
+    toast.error(e.message || '重置失败')
   }
 }
 
@@ -356,23 +665,31 @@ function cacheLabel(name) {
   return { 'hot-characters': '热门角色', tags: '标签列表' }[name] || name
 }
 
-function typeLabel(t) {
-  return { 1: '角色对话', 2: '叙事生成', 3: '其他' }[t] || `类型 ${t}`
+function typeLabel(type) {
+  return { 1: '角色对话', 2: '叙事生成', 3: '其他' }[type] || `类型 ${type}`
 }
 
 function formatNum(n) {
   return Number(n || 0).toLocaleString()
 }
 
-function formatTime(s) {
-  if (!s) return ''
-  return new Date(s).toLocaleString('zh-CN', { hour12: false }).slice(0, 19)
+function formatTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toLocaleString('zh-CN', { hour12: false }).slice(0, 19)
 }
 
 function handleResize() {
   contextChart?.resize()
   cacheChart?.resize()
 }
+
+watch(activeTab, async (tab) => {
+  if (tab !== 'cache') return
+  await nextTick()
+  renderCache()
+})
 
 onMounted(() => {
   loadAll()
@@ -385,28 +702,3 @@ onBeforeUnmount(() => {
   cacheChart?.dispose()
 })
 </script>
-
-<style scoped>
-.vm-head {
-  position: relative;
-  overflow: hidden;
-  border-radius: 1rem;
-  border: 1px solid rgba(61, 42, 26, 0.5);
-  background:
-    radial-gradient(120% 140% at 10% 0%, rgba(201, 149, 44, 0.16), transparent 60%),
-    rgba(45, 31, 20, 0.6);
-  padding: 2rem 2.5rem;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.vm-eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  color: rgba(212, 168, 83, 0.9);
-}
-</style>

@@ -289,7 +289,10 @@
               ref="resultScrollRef"
               class="max-h-[56vh] min-h-[380px] flex-1 overflow-y-auto px-4 py-5 sm:px-6"
             >
-              <div class="chat-md text-sm leading-7 text-foreground" v-html="renderMarkdown(content)" />
+              <div
+                class="chat-md text-sm leading-7 break-words text-foreground"
+                v-html="renderMarkdown(content)"
+              />
               <span v-if="generating" class="nr-caret ml-0.5 inline-block text-foreground">▍</span>
               <div v-if="generating" class="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 class="size-3 animate-spin" />
@@ -322,7 +325,7 @@
               @click="download('txt')"
             >
               <Download class="size-3.5" />
-              TXT
+              导出 TXT
             </Button>
             <Button
               variant="outline"
@@ -331,7 +334,7 @@
               @click="download('md')"
             >
               <Download class="size-3.5" />
-              Markdown
+              导出 MD
             </Button>
             <Button
               variant="secondary"

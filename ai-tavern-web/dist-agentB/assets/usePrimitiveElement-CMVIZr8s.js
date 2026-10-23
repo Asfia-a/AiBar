@@ -1,0 +1,1 @@
+import{di as e,po as t}from"./request-CfpVyuoc.js";import{i as n}from"./useForwardExpose-B0D_UQyB.js";function r(){let r=t();return{primitiveElement:r,currentElement:e(()=>[`#text`,`#comment`].includes(r.value?.$el.nodeName)?r.value?.$el.nextElementSibling:n(r))}}export{r as t};

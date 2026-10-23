@@ -176,7 +176,7 @@
               class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-center"
             >
               <span class="grid size-14 place-items-center rounded-2xl border border-border/70 bg-secondary">
-                <TreePine class="size-6 text-muted-foreground" />
+                <Sprout class="size-6 text-muted-foreground" />
               </span>
               <div class="max-w-sm space-y-1">
                 <p class="text-sm font-medium">世界树还是空的</p>
@@ -384,7 +384,7 @@
 
     <!-- 确认弹窗：替换树 / 删除节点共用 -->
     <Dialog v-model:open="confirmState.open" @update:open="onConfirmOpenChange">
-      <DialogContent class="sm:max-w-sm">
+      <DialogContent class="rounded-xl sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{{ confirmState.title }}</DialogTitle>
           <DialogDescription>{{ confirmState.description }}</DialogDescription>
@@ -419,8 +419,8 @@ import {
   Network,
   Plus,
   Sparkles,
+  Sprout,
   Trash2,
-  TreePine,
   UserPlus,
   WandSparkles,
 } from 'lucide-vue-next'
