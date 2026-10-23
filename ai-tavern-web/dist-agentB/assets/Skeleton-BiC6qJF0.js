@@ -1,1 +1,0 @@
-import{Co as e,Io as t,hi as n,la as r}from"./request-CfpVyuoc.js";import{a as i}from"./button-BKB78ZSU.js";var a={__name:`Skeleton`,props:{class:{type:[Boolean,null,String,Object,Array],required:!1,skipCheck:!0}},setup(a){let o=a;return(a,s)=>(r(),n(`div`,{"data-slot":`skeleton`,class:t(e(i)(`animate-pulse rounded-md bg-primary/10`,o.class))},null,2))}};export{a as t};

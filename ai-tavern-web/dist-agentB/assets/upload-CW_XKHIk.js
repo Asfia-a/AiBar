@@ -1,1 +1,0 @@
-import{n as e}from"./request-CfpVyuoc.js";function t(t){let n=new FormData;return n.append(`file`,t),e.post(`/upload`,n,{headers:{"Content-Type":`multipart/form-data`},timeout:6e4})}export{t};
