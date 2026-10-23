@@ -1,103 +1,156 @@
 <template>
   <div class="space-y-8">
-    <section class="text-center py-8">
-      <h1 class="font-display text-4xl sm:text-5xl font-bold text-tavern-200 mb-3">
-        欢迎来到 AI角色酒馆
+    <!-- 顶部：搜索 -->
+    <section class="flex flex-col items-center py-8 text-center sm:py-12">
+      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">
+        挑一个角色，开始今晚的故事
       </h1>
-      <p class="text-tavern-muted max-w-xl mx-auto">
-        推开门，暖光与低语迎接你。挑选一位角色，开启今夜的故事。
+      <p class="mt-3 max-w-xl text-sm text-muted-foreground">
+        流式对话、角色卡创作、叙事改写与社区发布——从一句开场白开始。
       </p>
-      <div class="mt-6 max-w-md mx-auto">
-        <el-input
-          v-model="keyword"
-          placeholder="搜索角色..."
-          size="large"
-          clearable
-          @keyup.enter="goSearch"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-          <template #append>
-            <el-button @click="goSearch">搜索</el-button>
-          </template>
-        </el-input>
-      </div>
-    </section>
 
-    <section>
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="font-display text-2xl text-tavern-200">🔥 热门角色</h2>
-      </div>
-      <div v-loading="loadingHot" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        <CharacterCard v-for="c in hotList" :key="c.id" :character="c" />
-      </div>
-      <el-empty v-if="!loadingHot && !hotList.length" description="暂无热门角色" />
-    </section>
+      <form class="mt-6 flex w-full max-w-md items-center gap-2" @submit.prevent="goSearch">
+        <div class="relative flex-1">
+          <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            v-model="keyword"
+            placeholder="搜索角色名或简介"
+            class="h-10 rounded-full pl-9"
+          />
+        </div>
+        <Button type="submit" class="h-10 rounded-full px-5">搜索</Button>
+      </form>
 
-    <section>
-      <div class="flex flex-wrap gap-2 mb-4">
+      <div v-if="tags.length" class="mt-4 flex flex-wrap justify-center gap-1.5">
         <button
-          v-for="cat in categories"
-          :key="cat.id || cat"
-          class="rounded-full px-4 py-1.5 text-sm transition-colors"
-          :class="activeCategory === (cat.id ?? cat) ? 'bg-tavern-400 text-tavern-950' : 'bg-tavern-800 text-tavern-muted hover:text-tavern-200'"
-          @click="selectCategory(cat)"
-        >
-          {{ cat.name ?? cat }}
-        </button>
-      </div>
-      <div v-loading="loadingList" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        <CharacterCard v-for="c in characterList" :key="c.id" :character="c" />
-      </div>
-      <div v-if="total > characterList.length" class="mt-6 text-center">
-        <el-button :loading="loadingMore" @click="loadMore">加载更多</el-button>
-      </div>
-    </section>
-
-    <section>
-      <h2 class="font-display text-2xl text-tavern-200 mb-4">🏷️ 标签探索</h2>
-      <div class="flex flex-wrap gap-2">
-        <router-link
-          v-for="tag in tags"
-          :key="tag.id || tag"
-          :to="{ name: 'Search', query: { tag: tag.name ?? tag } }"
-          class="rounded-full border border-tavern-600 px-3 py-1 text-sm text-tavern-300 hover:border-tavern-400 hover:bg-tavern-800/60 transition-colors"
+          v-for="tag in tags.slice(0, 8)"
+          :key="tag.id || tag.name || tag"
+          type="button"
+          class="rounded-full border border-border/70 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+          @click="openTag(tag)"
         >
           #{{ tag.name ?? tag }}
-        </router-link>
+        </button>
       </div>
     </section>
 
-    <section>
-      <h2 class="font-display text-2xl text-tavern-200 mb-4">📊 排行榜</h2>
-      <div v-loading="loadingRank" class="space-y-2">
-        <router-link
-          v-for="(c, idx) in rankingList"
-          :key="c.id"
-          :to="`/character/${c.id}`"
-          class="tavern-card flex items-center gap-4 p-3 hover:border-tavern-500/60 transition-colors"
-        >
-          <span class="font-display text-2xl w-8 text-center" :class="idx < 3 ? 'text-tavern-400' : 'text-tavern-muted'">
-            {{ idx + 1 }}
-          </span>
-          <el-avatar :size="48" :src="c.avatar">{{ c.name?.[0] }}</el-avatar>
-          <div class="flex-1 min-w-0">
-            <div class="font-medium text-tavern-100 truncate">{{ c.name }}</div>
-            <div class="text-xs text-tavern-muted">{{ c.chatCount ?? 0 }} 次对话</div>
-          </div>
-          <span class="text-tavern-400">⭐ {{ c.rating?.toFixed?.(1) ?? '-' }}</span>
+    <!-- 热门角色 -->
+    <section class="space-y-4">
+      <div class="flex items-end justify-between">
+        <div>
+          <h2 class="text-lg font-medium">热门角色</h2>
+          <p class="text-xs text-muted-foreground">按对话量与评分排出的本周热门</p>
+        </div>
+        <router-link to="/search" class="text-xs text-muted-foreground hover:text-foreground">
+          查看全部
         </router-link>
       </div>
+
+      <div v-if="loadingHot" class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <Skeleton v-for="i in 5" :key="i" class="aspect-[3/4] rounded-xl" />
+      </div>
+      <div
+        v-else-if="hotList.length"
+        class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      >
+        <CharacterCard v-for="c in hotList" :key="c.id" :character="c" />
+      </div>
+      <EmptyState v-else text="暂无热门角色" />
     </section>
+
+    <!-- 主体：分类 + 列表 / 侧栏：排行 + 标签 -->
+    <div class="grid grid-cols-1 gap-8 xl:grid-cols-[1fr_280px]">
+      <section class="space-y-4">
+        <div class="flex flex-wrap gap-1.5">
+          <Button
+            v-for="cat in categories"
+            :key="cat.id || cat.name"
+            :variant="activeCategory === (cat.id ?? cat) ? 'secondary' : 'ghost'"
+            size="sm"
+            class="rounded-full"
+            @click="selectCategory(cat)"
+          >
+            {{ cat.name ?? cat }}
+          </Button>
+        </div>
+
+        <div v-if="loadingList && !characterList.length" class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <Skeleton v-for="i in 6" :key="i" class="aspect-[3/4] rounded-xl" />
+        </div>
+        <div v-else-if="characterList.length" class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <CharacterCard v-for="c in characterList" :key="c.id" :character="c" />
+        </div>
+        <EmptyState v-else text="这个分类下还没有角色" />
+
+        <div v-if="total > characterList.length" class="pt-2 text-center">
+          <Button variant="outline" :disabled="loadingMore" @click="loadMore">
+            {{ loadingMore ? '加载中…' : '加载更多' }}
+          </Button>
+        </div>
+      </section>
+
+      <aside class="space-y-8">
+        <section class="space-y-3">
+          <h2 class="text-sm font-medium">排行榜</h2>
+          <div v-if="loadingRank" class="space-y-2">
+            <Skeleton v-for="i in 5" :key="i" class="h-14 rounded-lg" />
+          </div>
+          <div v-else-if="rankingList.length" class="space-y-1">
+            <router-link
+              v-for="(c, idx) in rankingList"
+              :key="c.id"
+              :to="`/character/${c.id}`"
+              class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-accent/60"
+            >
+              <span
+                class="w-4 text-center text-xs font-medium tabular-nums"
+                :class="idx < 3 ? 'text-foreground' : 'text-muted-foreground'"
+              >
+                {{ idx + 1 }}
+              </span>
+              <Avatar class="size-8 shrink-0">
+                <AvatarImage :src="c.avatar" :alt="c.name" />
+                <AvatarFallback class="text-xs">{{ c.name?.[0] }}</AvatarFallback>
+              </Avatar>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm">{{ c.name }}</span>
+                <span class="block text-[11px] text-muted-foreground">{{ c.chatCount ?? 0 }} 次对话</span>
+              </span>
+            </router-link>
+          </div>
+          <p v-else class="text-xs text-muted-foreground">暂无排行数据</p>
+        </section>
+
+        <section class="space-y-3">
+          <h2 class="text-sm font-medium">标签探索</h2>
+          <div v-if="tags.length" class="flex flex-wrap gap-1.5">
+            <router-link
+              v-for="tag in tags"
+              :key="tag.id || tag.name || tag"
+              :to="{ name: 'Search', query: { tag: tag.name ?? tag } }"
+              class="rounded-full border border-border/70 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+            >
+              #{{ tag.name ?? tag }}
+            </router-link>
+          </div>
+          <p v-else class="text-xs text-muted-foreground">暂无标签</p>
+        </section>
+      </aside>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Search } from 'lucide-vue-next'
 import CharacterCard from '../components/CharacterCard.vue'
+import EmptyState from '../components/EmptyState.vue'
 import { getHotCharacters, getCharacters, getRanking, getCategories, getTags } from '../api/character'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 
 const router = useRouter()
 const keyword = ref('')
@@ -118,6 +171,10 @@ function goSearch() {
   router.push({ name: 'Search', query: { q: keyword.value } })
 }
 
+function openTag(tag) {
+  router.push({ name: 'Search', query: { tag: tag.name ?? tag } })
+}
+
 function selectCategory(cat) {
   activeCategory.value = cat.id ?? cat
   page.value = 1
@@ -129,19 +186,29 @@ async function fetchHot() {
   try {
     const res = await getHotCharacters({ limit: 10 })
     hotList.value = res?.list ?? res ?? []
-  } catch { hotList.value = [] }
-  finally { loadingHot.value = false }
+  } catch {
+    hotList.value = []
+  } finally {
+    loadingHot.value = false
+  }
 }
 
 async function fetchCharacters() {
   loadingList.value = true
   try {
-    const res = await getCharacters({ page: page.value, size: 20, categoryId: activeCategory.value || undefined })
+    const res = await getCharacters({
+      page: page.value,
+      size: 20,
+      categoryId: activeCategory.value || undefined,
+    })
     const list = res?.list ?? res ?? []
     characterList.value = page.value === 1 ? list : [...characterList.value, ...list]
     total.value = res?.total ?? list.length
-  } catch { if (page.value === 1) characterList.value = [] }
-  finally { loadingList.value = false }
+  } catch {
+    if (page.value === 1) characterList.value = []
+  } finally {
+    loadingList.value = false
+  }
 }
 
 async function loadMore() {
@@ -156,8 +223,11 @@ async function fetchRanking() {
   try {
     const res = await getRanking({ limit: 10 })
     rankingList.value = res?.list ?? res ?? []
-  } catch { rankingList.value = [] }
-  finally { loadingRank.value = false }
+  } catch {
+    rankingList.value = []
+  } finally {
+    loadingRank.value = false
+  }
 }
 
 async function fetchMeta() {
@@ -166,11 +236,15 @@ async function fetchMeta() {
     if (Array.isArray(cats) && cats.length) {
       categories.value = [{ id: '', name: '全部' }, ...cats]
     }
-  } catch { /* 分类失败不影响标签 */ }
+  } catch {
+    /* 分类失败不影响标签 */
+  }
   try {
     const tagList = await getTags()
     tags.value = tagList?.list ?? tagList ?? []
-  } catch { /* ignore */ }
+  } catch {
+    /* 标签失败不影响主列表 */
+  }
 }
 
 onMounted(() => {
