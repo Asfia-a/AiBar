@@ -24,6 +24,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    watch: {
+      // 某些编辑器/工具用「写临时文件再替换」的方式保存，
+      // 临时目录被监听时会触发 EBUSY 把 dev server 直接搞崩
+      ignored: ['**/.*tmpdir/**', '**/*.tmp', '**/.git/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8080',

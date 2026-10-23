@@ -120,7 +120,7 @@
                   <WandSparkles v-else class="size-4" />
                   {{ expanding ? '扩展中…' : 'AI 扩展选中' }}
                 </Button>
-                <Button :disabled="generating" @click="generateWorld">
+                <Button :disabled="generating || expanding" @click="generateWorld">
                   <LoaderCircle v-if="generating" class="size-4 animate-spin" />
                   <Sparkles v-else class="size-4" />
                   {{ generating ? '生成中…' : '生成世界树' }}
@@ -154,7 +154,7 @@
             class="flex items-center gap-2 border-b border-border/60 bg-secondary/30 px-4 py-2 text-xs text-muted-foreground"
           >
             <LoaderCircle class="size-3.5 animate-spin" />
-            {{ generating ? '正在生成世界树，请稍候…' : `正在扩展「${selected?.label || '节点'}」…` }}
+            {{ generating ? '正在生成世界树，请稍候…' : `正在扩展「${expandingLabel || '节点'}」…` }}
           </div>
 
           <CardContent class="p-0">
@@ -496,6 +496,7 @@ const aiDepth = ref(3)
 const aiMode = ref('replace')
 const generating = ref(false)
 const expanding = ref(false)
+const expandingLabel = ref('')
 
 const collapsedIds = ref(new Set())
 let pendingConfirm = null
@@ -702,13 +703,16 @@ async function generateWorld() {
 
 async function expandSelected() {
   if (!selected.value) return
+  // 请求期间用户可能切换选中节点，先把目标节点固定下来
+  const target = selected.value
   expanding.value = true
+  expandingLabel.value = target.label
   try {
     const res = await workshopExpandWorldNode({
       node: {
-        label: selected.value.label,
-        type: selected.value.type,
-        summary: selected.value.summary,
+        label: target.label,
+        type: target.type,
+        summary: target.summary,
       },
       hint: aiIdea.value || '',
       language: aiLanguage.value || undefined,
@@ -718,15 +722,16 @@ async function expandSelected() {
       toast.warning('没有生成子节点')
       return
     }
-    if (!selected.value.children) selected.value.children = []
-    selected.value.children.push(...children)
-    ensureExpanded(selected.value.id)
+    if (!target.children) target.children = []
+    target.children.push(...children)
+    ensureExpanded(target.id)
     persist()
-    toast.success(`已为「${selected.value.label}」扩展 ${children.length} 个子节点`)
+    toast.success(`已为「${target.label}」扩展 ${children.length} 个子节点`)
   } catch {
     /* */
   } finally {
     expanding.value = false
+    expandingLabel.value = ''
   }
 }
 
