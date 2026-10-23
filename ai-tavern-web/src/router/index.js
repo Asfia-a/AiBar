@@ -14,7 +14,7 @@ const routes = [
     children: [
       { path: '', name: 'Home', component: () => import('../views/Home.vue') },
       { path: 'character/:id', name: 'CharacterDetail', component: () => import('../views/CharacterDetail.vue') },
-      { path: 'chat/:sessionId?', name: 'Chat', component: () => import('../views/Chat.vue'), meta: { requiresAuth: true } },
+      { path: 'chat/:sessionId?', name: 'Chat', component: () => import('../views/Chat.vue'), meta: { requiresAuth: true, fullBleed: true } },
       { path: 'create', name: 'CreateCharacter', component: () => import('../views/CreateCharacter.vue'), meta: { requiresAuth: true } },
       { path: 'edit/:id', name: 'EditCharacter', component: () => import('../views/CreateCharacter.vue'), meta: { requiresAuth: true } },
       { path: 'favorites', name: 'Favorites', component: () => import('../views/Favorites.vue'), meta: { requiresAuth: true } },

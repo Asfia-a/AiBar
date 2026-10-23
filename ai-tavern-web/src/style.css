@@ -101,6 +101,15 @@
 }
 
 @layer base {
+  /* 告诉浏览器这是深色界面：原生控件、滚动条、表单按暗色画 */
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
   * {
     @apply border-border outline-ring/50;
     box-sizing: border-box;
@@ -147,3 +156,20 @@
   --el-button-hover-bg-color: color-mix(in oklch, var(--primary) 88%, transparent);
   --el-button-hover-border-color: color-mix(in oklch, var(--primary) 88%, transparent);
 }
+
+/*
+ * 浏览器自动填充（记住密码）会给输入框刷一层浅蓝底 + 强制深色字，
+ * 在暗色界面上非常扎眼。用 inset 阴影盖住底色，并强制沿用主题色。
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--foreground);
+  caret-color: var(--foreground);
+  -webkit-box-shadow: 0 0 0 1000px var(--card) inset;
+  box-shadow: 0 0 0 1000px var(--card) inset;
+  transition: background-color 9999s ease-in-out 0s;
+}
+

@@ -174,11 +174,15 @@
         </div>
       </header>
 
-      <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+      <!-- fullBleed 的页面（如对话页）自己占满一屏，不要外层留白和页脚 -->
+      <main
+        class="w-full flex-1"
+        :class="isFullBleed ? 'min-h-0' : 'mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8'"
+      >
         <router-view />
       </main>
 
-      <footer class="border-t border-border/60 py-6">
+      <footer v-if="!isFullBleed" class="border-t border-border/60 py-6">
         <p class="text-center text-xs text-muted-foreground">
           AI 角色酒馆 · 用一句话开始一段故事
         </p>
@@ -268,6 +272,8 @@ const allMobileNav = [
   { to: '/notifications', label: '通知', name: 'Notifications', icon: Bell },
   { to: '/search', label: '搜索', name: 'Search', icon: Search },
 ]
+
+const isFullBleed = computed(() => route.meta.fullBleed === true)
 
 const isCreateActive = computed(() => createNav.some((item) => route.name === item.name))
 
