@@ -9,6 +9,9 @@ import com.tavern.common.ErrorCode;
 import com.tavern.common.PageResult;
 import com.tavern.entity.*;
 import com.tavern.mapper.*;
+import com.tavern.prompt.PromptBundle;
+import com.tavern.prompt.PromptEngine;
+import com.tavern.prompt.PromptInput;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,9 +44,19 @@ public class ChatService {
     private final BillingProperties billingProperties;
     private final ObjectMapper objectMapper;
     private final RuntimeMetricsService runtimeMetricsService;
+    private final PromptEngine promptEngine;
+    private final WorldInfoMapper worldInfoMapper;
 
     @Value("${ai.model.context-window-size:20}")
     private int defaultContextWindow;
+
+    /** 输入侧 token 预算，超出先裁最早的历史 */
+    @Value("${ai.model.max-input-tokens:6000}")
+    private int maxInputTokens;
+
+    /** 世界书扫描最近几条消息 */
+    @Value("${ai.model.world-info-scan-depth:4}")
+    private int worldInfoScanDepth;
 
     private final ExecutorService sseExecutor = Executors.newCachedThreadPool();
 
@@ -219,6 +232,9 @@ public class ChatService {
         meta.put("droppedRounds", bundle.droppedRounds());
         meta.put("systemChars", bundle.systemChars());
         meta.put("dialogueChars", bundle.dialogueChars());
+        meta.put("worldInfoChars", bundle.worldInfoChars());
+        meta.put("authorNoteChars", bundle.authorNoteChars());
+        meta.put("activatedEntries", bundle.activatedEntries());
         meta.put("estimatedTokens", bundle.estimatedTokens());
         meta.put("maxTokens", maxTokens);
 
@@ -422,30 +438,29 @@ public class ChatService {
      * 窗口上限、实际取了几轮、system 提示多长、被丢弃了多少轮。
      * 这些之前只体现在代码里，用户和论文都看不到，现在显式返回出来。
      */
+    /**
+     * 组装本轮发给模型的 messages。
+     *
+     * <p>拼装细节交给 {@link PromptEngine}：主提示 / 世界书 / 作者注释 / 历史，
+     * 这里只负责从库里取数据、并把统计数字带回去。
+     */
     private PromptBundle buildPrompt(CharacterCard card, Long sessionId) {
+        ChatSession session = sessionMapper.findById(sessionId);
+        String userName = "你";
+        if (session != null && session.getUserId() != null) {
+            User u = userMapper.findById(session.getUserId());
+            if (u != null && u.getNickname() != null && !u.getNickname().isBlank()) {
+                userName = u.getNickname();
+            }
+        }
+
         String style = "";
         if (card.getTags() != null && !card.getTags().isEmpty()) {
-            style = card.getTags().stream().map(Tag::getName).filter(Objects::nonNull).collect(Collectors.joining("、"));
+            style = card.getTags().stream().map(Tag::getName).filter(Objects::nonNull)
+                    .collect(Collectors.joining("、"));
         } else if (card.getId() != null) {
-            style = tagMapper.findByCharacterId(card.getId()).stream().map(Tag::getName).collect(Collectors.joining("、"));
-        }
-        StringBuilder system = new StringBuilder();
-        system.append("你是一个角色扮演 AI，请始终保持角色身份，不要跳出人设。\n");
-        if (card.getPersonality() != null) {
-            system.append("【性格】").append(card.getPersonality()).append("\n");
-        }
-        if (card.getDescription() != null && !card.getDescription().isBlank()
-                && (card.getPersonality() == null || !card.getPersonality().contains(card.getDescription()))) {
-            system.append("【简介】").append(card.getDescription()).append("\n");
-        }
-        if (card.getBackgroundStory() != null) {
-            system.append("【背景】").append(card.getBackgroundStory()).append("\n");
-        }
-        if (card.getExampleDialogue() != null) {
-            system.append("【示例对话】").append(card.getExampleDialogue()).append("\n");
-        }
-        if (!style.isBlank()) {
-            system.append("【说话风格标签】").append(style).append("。请据此调整语气与用词。\n");
+            style = tagMapper.findByCharacterId(card.getId()).stream().map(Tag::getName)
+                    .collect(Collectors.joining("、"));
         }
 
         int window = defaultContextWindow;
@@ -456,39 +471,36 @@ public class ChatService {
 
         List<ChatMessage> recent = messageMapper.listRecent(sessionId, window);
         Collections.reverse(recent);
+        List<PromptInput.Turn> history = recent.stream()
+                .filter(m -> !"system".equals(m.getRole()))
+                .map(m -> new PromptInput.Turn(m.getRole(), m.getContent()))
+                .toList();
 
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", system.toString()));
-        int systemChars = system.length();
-        int dialogueChars = 0;
-        int usedRounds = 0;
-        for (ChatMessage m : recent) {
-            if ("system".equals(m.getRole())) continue;
-            messages.add(Map.of("role", m.getRole(), "content", m.getContent()));
-            dialogueChars += m.getContent() == null ? 0 : m.getContent().length();
-            usedRounds++;
-        }
-        // 会话总消息数，用于算出被窗口截断掉多少
-        int totalMessages = messageMapper.countBySession(sessionId);
-        int dropped = Math.max(totalMessages - usedRounds, 0);
-        return new PromptBundle(messages, window, usedRounds, dropped, systemChars, dialogueChars);
-    }
+        long userTurns = history.stream().filter(t -> "user".equals(t.role())).count();
+        String authorNote = session == null ? null : session.getAuthorNote();
+        int anDepth = session == null || session.getAnDepth() == null ? 0 : session.getAnDepth();
+        int anFreq = session == null || session.getAnFrequency() == null ? 1 : session.getAnFrequency();
 
-    /**
-     * 提示词与其构建统计。
-     *
-     * @param window       配置的上下文窗口（轮）
-     * @param usedRounds   实际送进模型的对话轮数
-     * @param droppedRounds 因超出窗口被丢弃的轮数
-     * @param systemChars  system 提示长度（字符）
-     * @param dialogueChars 送入的历史对话总长度（字符）
-     */
-    public record PromptBundle(List<Map<String, String>> messages, int window, int usedRounds,
-                               int droppedRounds, int systemChars, int dialogueChars) {
-        /** 粗略估算 token 数：中文按 1.5 字/token 折算 */
-        public int estimatedTokens() {
-            return (int) ((systemChars + dialogueChars) / 1.5);
-        }
+        List<WorldInfoEntry> entries = card.getId() == null
+                ? List.of()
+                : worldInfoMapper.findActiveForCharacter(card.getId());
+
+        int maxOutput = card.getMaxTokens() == null ? 500 : card.getMaxTokens();
+
+        PromptInput input = PromptInput.builder()
+                .character(card.getName(), card.getDescription(), card.getPersonality(),
+                        card.getBackgroundStory(), card.getExampleDialogue(), style)
+                .user(userName)
+                .history(history)
+                .authorNote(authorNote, anDepth, anFreq, userTurns)
+                .world(entries, worldInfoScanDepth)
+                .budget(maxInputTokens, maxOutput)
+                .build();
+
+        PromptBundle bundle = promptEngine.build(input);
+        // 会话总消息数只有这里知道，用来算「被窗口丢掉多少」
+        int total = messageMapper.countBySession(sessionId);
+        return bundle.withDroppedRounds(Math.max(total - bundle.usedRounds(), 0));
     }
 
     public void collectMessage(Long userId, Long messageId) {

@@ -29,6 +29,15 @@ public interface ChatSessionMapper {
     @Update("UPDATE t_chat_session SET prompt_snapshot=#{promptSnapshot} WHERE id=#{id} AND (prompt_snapshot IS NULL OR prompt_snapshot='')")
     int updatePromptSnapshot(@Param("id") Long id, @Param("promptSnapshot") String promptSnapshot);
 
+    /** 作者注释是会话级设置，改角色卡不影响它 */
+    @Update("""
+            UPDATE t_chat_session SET author_note=#{note}, an_depth=#{depth}, an_frequency=#{frequency},
+            updated_at=NOW() WHERE id=#{id} AND user_id=#{userId}
+            """)
+    int updateAuthorNote(@Param("id") Long id, @Param("userId") Long userId,
+                         @Param("note") String note, @Param("depth") int depth,
+                         @Param("frequency") int frequency);
+
     @Select("SELECT s.*, c.name AS character_name, c.avatar AS character_avatar FROM t_chat_session s " +
             "LEFT JOIN t_character c ON s.character_id=c.id WHERE s.user_id=#{userId} ORDER BY s.updated_at DESC")
     List<ChatSession> listByUser(Long userId);

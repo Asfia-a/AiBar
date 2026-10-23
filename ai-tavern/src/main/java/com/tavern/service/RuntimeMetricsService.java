@@ -49,7 +49,7 @@ public class RuntimeMetricsService {
      * <p>{@code usage} 是占用比例：已用轮数 / 窗口上限。超过 1 说明触到了裁剪，
      * 这条曲线是「上下文占用条」和论文里那张对比图的共同数据源。
      */
-    public void recordContext(ChatService.PromptBundle bundle) {
+    public void recordContext(com.tavern.prompt.PromptBundle bundle) {
         try {
             double usage = bundle.window() == 0 ? 0 : (double) bundle.usedRounds() / bundle.window();
             Map<String, Object> m = new HashMap<>();

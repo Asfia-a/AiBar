@@ -10,12 +10,12 @@ CREATE TABLE IF NOT EXISTS t_user (
     email       VARCHAR(100),
     phone       VARCHAR(20),
     token_balance     BIGINT DEFAULT 10000,
-    member_level      TINYINT DEFAULT 0 COMMENT '0普�?1白银 2黄金 3钻石',
+    member_level      TINYINT DEFAULT 0 COMMENT '0普通 1白银 2黄金 3钻石',
     daily_free_token  BIGINT DEFAULT 2000,
     last_check_in     DATE,
     consecutive_days  INT DEFAULT 0,
     points      INT DEFAULT 0,
-    role        TINYINT DEFAULT 0 COMMENT '0用户 1管理�?,
+    role        TINYINT DEFAULT 0 COMMENT '0用户 1管理员',
     status      TINYINT DEFAULT 1 COMMENT '0封禁 1正常',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS t_character (
     greeting        TEXT,
     creator_id      BIGINT NOT NULL,
     category_id     BIGINT,
-    status          TINYINT DEFAULT 0 COMMENT '0草稿 1审核�?2已上�?3已下�?4驳回',
+    status          TINYINT DEFAULT 0 COMMENT '0草稿 1审核中 2已上架 3已下架 4驳回',
     source_id       BIGINT COMMENT '复刻来源，NULL=原创',
     version         INT DEFAULT 1,
     temperature     DECIMAL(3,2) DEFAULT 0.70,
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS t_chat_session (
     last_role       VARCHAR(10),
     message_count   INT DEFAULT 0,
     total_tokens    BIGINT DEFAULT 0,
-    prompt_snapshot MEDIUMTEXT COMMENT '�Ự����ʱ����Ľ�ɫ����JSON',
+    prompt_snapshot MEDIUMTEXT COMMENT '会话创建时冻结的角色人设JSON，创作者改卡不影响已有对话',
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_user_character (user_id, character_id)
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS t_token_log (
     tokens_used     INT NOT NULL,
     balance_before  BIGINT NOT NULL,
     balance_after   BIGINT NOT NULL,
-    type            TINYINT DEFAULT 1 COMMENT '1消费 2充�?3签到 4积分兑换',
+    type            TINYINT DEFAULT 1 COMMENT '1消费 2充值 3签到 4积分兑换',
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_user (user_id)
 );
@@ -182,11 +182,14 @@ CREATE TABLE IF NOT EXISTS t_point_log (
 
 CREATE TABLE IF NOT EXISTS t_recharge_order (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    order_no VARCHAR(64) NOT NULL UNIQUE,
     user_id BIGINT NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
-    tokens BIGINT NOT NULL,
-    status TINYINT DEFAULT 1 COMMENT '0失败 1成功',
+    token_count BIGINT NOT NULL,
+    pay_type VARCHAR(20) DEFAULT 'mock',
+    status TINYINT DEFAULT 1 COMMENT '0待支付/失败 1成功',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    paid_at DATETIME NULL,
     INDEX idx_user (user_id)
 );
 
@@ -215,7 +218,7 @@ CREATE TABLE IF NOT EXISTS t_violation_log (
 CREATE TABLE IF NOT EXISTS t_sensitive_word (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     word VARCHAR(50) NOT NULL UNIQUE,
-    level TINYINT DEFAULT 1 COMMENT '1�?2�?3�?,
+    level TINYINT DEFAULT 1 COMMENT '1低 2中 3高',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -264,9 +267,35 @@ CREATE TABLE IF NOT EXISTS t_narrative_work (
     INDEX idx_publish (status, audit_status)
 );
 
--- 管理员密�?admin123 �?BCrypt
+-- 世界书（对标 SillyTavern World Info）：只在对话命中关键词时才把设定插进 prompt
+CREATE TABLE IF NOT EXISTS t_world_info_entry (
+    id            BIGINT PRIMARY KEY AUTO_INCREMENT,
+    character_id  BIGINT COMMENT 'NULL 表示全局条目',
+    user_id       BIGINT,
+    title         VARCHAR(100) NOT NULL COMMENT '备注名，不进 prompt',
+    `keys`        VARCHAR(500) COMMENT '触发关键词，英文逗号分隔，/.../ 形式按正则',
+    content       TEXT NOT NULL COMMENT '命中后插入的内容',
+    order_no      INT DEFAULT 100 COMMENT '插入顺序，越大越靠近上下文末尾',
+    position      VARCHAR(20) DEFAULT 'after_char' COMMENT 'before_char/after_char/in_chat',
+    depth         INT DEFAULT 4 COMMENT 'position=in_chat 时插到倒数第几条之前',
+    probability   INT DEFAULT 100 COMMENT '触发概率 0-100',
+    constant_on   TINYINT DEFAULT 0 COMMENT '1=无条件插入',
+    enabled       TINYINT DEFAULT 1,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_character (character_id),
+    INDEX idx_enabled (enabled)
+);
+
+-- 作者注释是会话级设置：插在历史对话里的强指令
+ALTER TABLE t_chat_session
+    ADD COLUMN author_note  TEXT COMMENT '作者注释内容',
+    ADD COLUMN an_depth     INT DEFAULT 0 COMMENT '0=历史末尾，N=倒数第 N 条之前',
+    ADD COLUMN an_frequency INT DEFAULT 1 COMMENT '每 N 条用户消息插一次，0=不插';
+
+-- 管理员密码 admin123 的 BCrypt
 INSERT INTO t_user (username, password, nickname, token_balance, member_level, role, status)
-VALUES ('admin', '$2a$10$C0rAhWRDSuRttGXAqa51K.im.cBpUP.wWPFe2tUijhunYIj8Ds9Zi', '管理�?, 999999, 3, 1, 1)
+VALUES ('admin', '$2a$10$C0rAhWRDSuRttGXAqa51K.im.cBpUP.wWPFe2tUijhunYIj8Ds9Zi', '管理员', 999999, 3, 1, 1)
 ON DUPLICATE KEY UPDATE username = username;
 
 INSERT INTO t_category (name, sort) VALUES
@@ -283,14 +312,14 @@ ON DUPLICATE KEY UPDATE sort = VALUES(sort);
 INSERT INTO t_tag (name, color) VALUES
 ('温柔', '#E6A23C'),
 ('傲娇', '#F56C6C'),
-('理�?, '#409EFF'),
+('理性', '#409EFF'),
 ('幽默', '#67C23A'),
 ('神秘', '#909399'),
 ('热血', '#FF6B35')
 ON DUPLICATE KEY UPDATE name = VALUES(name);
 
 INSERT INTO t_sensitive_word (word, level) VALUES
-('违禁词示�?, 1),
+('违禁词示例', 1),
 ('暴力极端', 2),
 ('色情内容', 3)
 ON DUPLICATE KEY UPDATE word = VALUES(word);
