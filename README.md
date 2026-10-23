@@ -79,6 +79,10 @@ cd ai-tavern-web && npm install && npm run dev
 cd ai-tavern-admin && npm install && npm run dev
 ```
 
+> **Windows / PowerShell 注意**：PowerShell 会把 `-Dspring-boot.run.profiles=local` 参数拆开，改用环境变量：
+> `$env:SPRING_PROFILES_ACTIVE='local'; mvn spring-boot:run`。
+> 另外首次 `spring-boot:run` 需要联网拉取插件依赖，之后才能用 `-o` 离线跑。
+
 ### 4. 接入 MCP（可选）
 
 `ai-tavern-mcp/` 是一个标准 MCP 服务，任何支持 MCP 的客户端都能接；README 见 `ai-tavern-mcp/README.md`。
