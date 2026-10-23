@@ -1,125 +1,293 @@
 <template>
-  <div class="min-h-screen flex flex-col">
-    <header class="sticky top-0 z-50 border-b border-tavern-700/60 bg-tavern-900/90 backdrop-blur-md">
-      <div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-        <router-link to="/" class="flex items-center gap-2 group">
-          <span class="text-2xl">🍺</span>
-          <span class="font-display text-2xl font-bold text-tavern-300 group-hover:text-tavern-200 transition-colors">
-            AI角色酒馆
-          </span>
-        </router-link>
-
-        <nav class="hidden md:flex items-center gap-1">
-          <router-link
-            v-for="item in navItems"
-            :key="item.to"
-            :to="item.to"
-            class="rounded-lg px-3 py-2 text-sm transition-colors"
-            :class="isNavActive(item)
-              ? '!text-tavern-300 bg-tavern-800/80'
-              : 'text-tavern-muted hover:text-tavern-200 hover:bg-tavern-800/60'"
-          >
-            {{ item.label }}
-          </router-link>
-        </nav>
-
-        <div class="flex items-center gap-2">
-          <router-link to="/search" class="p-2 text-tavern-muted hover:text-tavern-300 transition-colors">
-            <el-icon :size="20"><Search /></el-icon>
-          </router-link>
-          <template v-if="authStore.isLoggedIn">
-            <button
-              type="button"
-              class="hidden sm:flex items-center gap-1 rounded-lg border border-tavern-700/60 bg-tavern-800/50 px-2.5 py-1 text-xs text-tavern-200 hover:border-tavern-500 transition-colors"
-              title="点击充值"
-              @click="router.push('/profile')"
+  <TooltipProvider :delay-duration="200">
+    <div class="flex min-h-screen flex-col bg-background">
+      <!-- 顶栏 -->
+      <header
+        class="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl"
+      >
+        <div class="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-4 sm:px-6">
+          <!-- 品牌 -->
+          <router-link to="/" class="flex shrink-0 items-center gap-2">
+            <span
+              class="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground"
             >
-              <span class="text-tavern-muted">积分</span>
-              <span class="font-medium text-tavern-300">{{ formatNum(authStore.user?.points) }}</span>
-            </button>
-            <router-link to="/notifications" class="p-2 text-tavern-muted hover:text-tavern-300 transition-colors relative">
-              <el-icon :size="20"><Bell /></el-icon>
-            </router-link>
-            <el-dropdown trigger="click" @command="handleCommand">
-              <button class="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-tavern-800/60 transition-colors">
-                <el-avatar :size="32" :src="authStore.user?.avatar">
-                  {{ authStore.user?.nickname?.[0] || 'U' }}
-                </el-avatar>
-                <span class="hidden sm:inline text-sm text-tavern-200">{{ authStore.user?.nickname || '旅人' }}</span>
-              </button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="profile">个人资料 / 充值</el-dropdown-item>
-                  <el-dropdown-item command="mine">我的角色</el-dropdown-item>
-                  <el-dropdown-item command="workshop">创意工坊</el-dropdown-item>
-                  <el-dropdown-item command="inspiration">灵感记录</el-dropdown-item>
-                  <el-dropdown-item command="narrative">叙事工坊</el-dropdown-item>
-                  <el-dropdown-item command="community">社区广场</el-dropdown-item>
-                  <el-dropdown-item command="metrics">运行机制可视化</el-dropdown-item>
-                  <el-dropdown-item command="world-tree">世界树</el-dropdown-item>
-                  <el-dropdown-item command="favorites">我的收藏</el-dropdown-item>
-                  <el-dropdown-item command="checkin">每日签到</el-dropdown-item>
-                  <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </template>
-          <router-link v-else to="/login" class="tavern-btn-primary text-sm">
-            登录
+              <Sparkles class="size-4" />
+            </span>
+            <span class="hidden text-sm font-semibold tracking-tight sm:inline">
+              AI 角色酒馆
+            </span>
           </router-link>
+
+          <!-- 主导航 -->
+          <nav class="ml-2 hidden items-center gap-1 md:flex">
+            <router-link
+              v-for="item in primaryNav"
+              :key="item.to"
+              :to="item.to"
+              class="rounded-full px-3 py-1.5 text-sm transition-colors"
+              :class="
+                isActive(item)
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              "
+            >
+              {{ item.label }}
+            </router-link>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <button
+                  type="button"
+                  class="flex items-center gap-1 rounded-full px-3 py-1.5 text-sm transition-colors"
+                  :class="
+                    isCreateActive
+                      ? 'bg-secondary text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  "
+                >
+                  创作
+                  <ChevronDown class="size-3.5 opacity-60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" class="w-48">
+                <DropdownMenuItem
+                  v-for="item in createNav"
+                  :key="item.to"
+                  class="cursor-pointer"
+                  @select="router.push(item.to)"
+                >
+                  <component :is="item.icon" class="size-4 opacity-70" />
+                  {{ item.label }}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </nav>
+
+          <div class="flex-1" />
+
+          <!-- 右侧操作 -->
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button variant="ghost" size="icon-sm" @click="router.push('/search')">
+                <Search class="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>搜索角色</TooltipContent>
+          </Tooltip>
+
+          <template v-if="authStore.isLoggedIn">
+            <router-link
+              to="/profile"
+              class="hidden items-center gap-1.5 rounded-full border border-border/80 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground sm:flex"
+            >
+              <Coins class="size-3.5" />
+              <span class="font-medium text-foreground">{{ formatNum(authStore.user?.points) }}</span>
+            </router-link>
+
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  class="relative"
+                  @click="router.push('/notifications')"
+                >
+                  <Bell class="size-4" />
+                  <span
+                    class="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-foreground"
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>通知</TooltipContent>
+            </Tooltip>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <button type="button" class="ml-1 rounded-full outline-none">
+                  <Avatar class="size-8">
+                    <AvatarImage :src="authStore.user?.avatar" :alt="displayName" />
+                    <AvatarFallback class="text-xs">{{ displayName[0] }}</AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" class="w-52">
+                <DropdownMenuLabel class="font-normal">
+                  <p class="text-sm font-medium">{{ displayName }}</p>
+                  <p class="text-xs text-muted-foreground">
+                    {{ authStore.user?.username || '旅人' }}
+                  </p>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  v-for="item in accountNav"
+                  :key="item.to"
+                  class="cursor-pointer"
+                  @select="router.push(item.to)"
+                >
+                  <component :is="item.icon" class="size-4 opacity-70" />
+                  {{ item.label }}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem class="cursor-pointer" @select="handleLogout">
+                  <LogOut class="size-4 opacity-70" />
+                  退出登录
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </template>
+
+          <Button v-else size="sm" class="rounded-full" @click="router.push('/login')">
+            登录
+          </Button>
+
+          <!-- 移动端菜单 -->
+          <Sheet v-model:open="mobileOpen">
+            <SheetTrigger as-child>
+              <Button variant="ghost" size="icon-sm" class="md:hidden">
+                <Menu class="size-4" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" class="w-72">
+              <SheetHeader>
+                <SheetTitle>导航</SheetTitle>
+                <SheetDescription class="sr-only">站点导航</SheetDescription>
+              </SheetHeader>
+              <nav class="mt-4 flex flex-col gap-1">
+                <router-link
+                  v-for="item in allMobileNav"
+                  :key="item.to"
+                  :to="item.to"
+                  class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors"
+                  :class="
+                    isActive(item)
+                      ? 'bg-secondary text-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                  "
+                  @click="mobileOpen = false"
+                >
+                  <component :is="item.icon" class="size-4 opacity-70" />
+                  {{ item.label }}
+                </router-link>
+              </nav>
+            </SheetContent>
+          </Sheet>
         </div>
-      </div>
-    </header>
+      </header>
 
-    <main class="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
-      <router-view />
-    </main>
+      <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <router-view />
+      </main>
 
-    <footer class="border-t border-tavern-800 py-6 text-center text-sm text-tavern-muted">
-      <p>AI角色酒馆 — 在温暖灯光下，与角色共度良宵</p>
-    </footer>
-  </div>
+      <footer class="border-t border-border/60 py-6">
+        <p class="text-center text-xs text-muted-foreground">
+          AI 角色酒馆 · 用一句话开始一段故事
+        </p>
+      </footer>
+    </div>
+  </TooltipProvider>
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import {
+  Bell,
+  Bookmark,
+  CalendarCheck,
+  ChevronDown,
+  Coins,
+  Gauge,
+  Hammer,
+  LayoutGrid,
+  LogOut,
+  Menu,
+  MessageSquare,
+  PenLine,
+  Search,
+  Sparkles,
+  TreePine,
+  UserRound,
+  Users,
+} from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
+import { Button } from '@/components/ui/button'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
-const navItems = [
+const mobileOpen = ref(false)
+
+const primaryNav = [
   { to: '/', label: '角色广场', name: 'Home' },
   { to: '/chat', label: '对话', name: 'Chat' },
   { to: '/community', label: '社区', name: 'Community' },
-  { to: '/mine', label: '我的角色', name: 'MyCharacters' },
-  { to: '/inspiration', label: '灵感记录', name: 'Inspiration' },
-  { to: '/world-tree', label: '世界树', name: 'WorldTree' },
-  { to: '/create', label: '创建', name: 'CreateCharacter' },
 ]
 
+const createNav = [
+  { to: '/create', label: '创建角色', name: 'CreateCharacter', icon: PenLine },
+  { to: '/inspiration', label: '灵感记录', name: 'Inspiration', icon: Sparkles },
+  { to: '/narrative', label: '叙事工坊', name: 'Narrative', icon: Bookmark },
+  { to: '/world-tree', label: '世界树', name: 'WorldTree', icon: TreePine },
+  { to: '/workshop', label: '创意工坊', name: 'Workshop', icon: Hammer },
+  { to: '/metrics', label: '运行机制', name: 'Metrics', icon: Gauge },
+]
+
+const accountNav = [
+  { to: '/profile', label: '个人资料', name: 'Profile', icon: UserRound },
+  { to: '/mine', label: '我的角色', name: 'MyCharacters', icon: LayoutGrid },
+  { to: '/favorites', label: '我的收藏', name: 'Favorites', icon: Bookmark },
+  { to: '/checkin', label: '每日签到', name: 'CheckIn', icon: CalendarCheck },
+]
+
+// 移动端把桌面端「主航 + 创作 + 账号」三组拍平成一个抽屉，顺序与桌面一致
+const allMobileNav = [
+  { to: '/', label: '角色广场', name: 'Home', icon: LayoutGrid },
+  { to: '/chat', label: '对话', name: 'Chat', icon: MessageSquare },
+  { to: '/community', label: '社区', name: 'Community', icon: Users },
+  ...createNav,
+  ...accountNav,
+  { to: '/notifications', label: '通知', name: 'Notifications', icon: Bell },
+  { to: '/search', label: '搜索', name: 'Search', icon: Search },
+]
+
+const isCreateActive = computed(() => createNav.some((item) => route.name === item.name))
+
+const displayName = computed(() => authStore.user?.nickname || authStore.user?.username || '旅人')
+
 /**
- * 导航高亮不能用 router-link 的 active-class：
- * `/` 是所有子路由的父级，vue-router 按 matched 记录判定，
- * 进到任何页面都会把「角色广场」标成激活。改为比对路由名。
+ * 高亮按路由名比对：`/` 是父级，用 router-link 的 active-class 会把
+ * 所有页面都判定成「角色广场」激活。
  */
-function isNavActive(item) {
-  return route.name === item.name
+function isActive(item) {
+  return item.name === route.name
 }
 
 function formatNum(n) {
   return Number(n || 0).toLocaleString()
 }
 
-function handleCommand(cmd) {
-  if (cmd === 'logout') {
-    authStore.logout()
-    router.push('/login')
-  } else {
-    router.push(`/${cmd}`)
-  }
+function handleLogout() {
+  authStore.logout()
+  router.push('/login')
 }
 
 onMounted(() => {

@@ -1,47 +1,124 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center px-4">
-    <div class="w-full max-w-md">
-      <div class="text-center mb-8">
-        <span class="text-4xl">🍺</span>
-        <h1 class="font-display text-3xl font-bold text-tavern-300 mt-2">AI角色酒馆</h1>
-        <p class="text-tavern-muted mt-1">{{ isRegister ? '注册新账号' : '欢迎回来，旅人' }}</p>
-      </div>
-
-      <div class="tavern-card p-6">
-        <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="handleSubmit">
-          <el-form-item label="用户名" prop="username">
-            <el-input v-model="form.username" placeholder="请输入用户名" />
-          </el-form-item>
-          <el-form-item v-if="isRegister" label="昵称" prop="nickname">
-            <el-input v-model="form.nickname" placeholder="酒馆中的称呼" />
-          </el-form-item>
-          <el-form-item label="密码" prop="password">
-            <el-input v-model="form.password" type="password" placeholder="请输入密码" show-password />
-          </el-form-item>
-          <el-form-item v-if="isRegister" label="确认密码" prop="confirmPassword">
-            <el-input v-model="form.confirmPassword" type="password" placeholder="再次输入密码" show-password />
-          </el-form-item>
-
-          <el-button type="primary" class="w-full" :loading="loading" native-type="submit">
-            {{ isRegister ? '注册' : '登录' }}
-          </el-button>
-        </el-form>
-
-        <div class="mt-4 text-center text-sm text-tavern-muted">
-          <button class="text-tavern-400 hover:text-tavern-300 transition-colors" @click="toggleMode">
-            {{ isRegister ? '已有账号？去登录' : '没有账号？去注册' }}
-          </button>
+  <div class="grid min-h-screen lg:grid-cols-2">
+    <!-- 左侧品牌区 -->
+    <div class="relative hidden overflow-hidden border-r border-border/60 lg:block">
+      <div
+        class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,var(--color-secondary),transparent_60%)]"
+      />
+      <div
+        class="absolute inset-0 opacity-[0.04] [background-image:linear-gradient(to_right,currentColor_1px,transparent_1px),linear-gradient(to_bottom,currentColor_1px,transparent_1px)] [background-size:56px_56px]"
+      />
+      <div class="relative flex h-full flex-col justify-between p-12">
+        <div class="flex items-center gap-2">
+          <span class="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <Sparkles class="size-4" />
+          </span>
+          <span class="text-sm font-semibold tracking-tight">AI 角色酒馆</span>
         </div>
+
+        <div class="max-w-md">
+          <h1 class="text-4xl font-semibold leading-tight tracking-tight">
+            在灯下坐下，<br />和角色说第一句话。
+          </h1>
+          <p class="mt-4 text-sm leading-relaxed text-muted-foreground">
+            流式对话、角色卡创作、叙事改写与社区发布——从一次对话到一部作品。
+          </p>
+          <ul class="mt-8 space-y-3 text-sm text-muted-foreground">
+            <li v-for="item in features" :key="item" class="flex items-start gap-2">
+              <Check class="mt-0.5 size-4 shrink-0" />
+              <span>{{ item }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <p class="text-xs text-muted-foreground">毕业设计作品 · 董佳武</p>
+      </div>
+    </div>
+
+    <!-- 右侧表单区 -->
+    <div class="flex items-center justify-center px-4 py-10">
+      <div class="w-full max-w-sm">
+        <div class="mb-8 lg:hidden">
+          <span class="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <Sparkles class="size-4" />
+          </span>
+        </div>
+
+        <h2 class="text-2xl font-semibold tracking-tight">
+          {{ isRegister ? '创建账号' : '欢迎回来' }}
+        </h2>
+        <p class="mt-1 text-sm text-muted-foreground">
+          {{ isRegister ? '注册后即可与角色开始对话' : '登录后继续你的故事' }}
+        </p>
+
+        <form class="mt-8 space-y-4" @submit.prevent="handleSubmit">
+          <div class="space-y-2">
+            <Label for="username">用户名</Label>
+            <Input
+              id="username"
+              v-model.trim="form.username"
+              autocomplete="username"
+              placeholder="请输入用户名"
+            />
+          </div>
+
+          <div v-if="isRegister" class="space-y-2">
+            <Label for="nickname">昵称</Label>
+            <Input id="nickname" v-model.trim="form.nickname" placeholder="酒馆中的称呼" />
+          </div>
+
+          <div class="space-y-2">
+            <Label for="password">密码</Label>
+            <Input
+              id="password"
+              v-model="form.password"
+              type="password"
+              :autocomplete="isRegister ? 'new-password' : 'current-password'"
+              placeholder="至少 6 位"
+            />
+          </div>
+
+          <div v-if="isRegister" class="space-y-2">
+            <Label for="confirmPassword">确认密码</Label>
+            <Input
+              id="confirmPassword"
+              v-model="form.confirmPassword"
+              type="password"
+              autocomplete="new-password"
+              placeholder="请再次输入密码"
+            />
+          </div>
+
+          <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
+
+          <Button type="submit" class="w-full" :disabled="loading">
+            {{ loading ? '请稍候…' : isRegister ? '注册' : '登录' }}
+          </Button>
+        </form>
+
+        <p class="mt-6 text-center text-sm text-muted-foreground">
+          {{ isRegister ? '已有账号？' : '还没有账号？' }}
+          <button
+            type="button"
+            class="font-medium text-foreground underline-offset-4 hover:underline"
+            @click="toggleMode"
+          >
+            {{ isRegister ? '去登录' : '去注册' }}
+          </button>
+        </p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { Check, Sparkles } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 const router = useRouter()
 const route = useRoute()
@@ -49,7 +126,7 @@ const authStore = useAuthStore()
 
 const isRegister = ref(false)
 const loading = ref(false)
-const formRef = ref()
+const errorMessage = ref('')
 
 const form = reactive({
   username: '',
@@ -58,38 +135,53 @@ const form = reactive({
   confirmPassword: '',
 })
 
-const validateConfirm = (_rule, value, callback) => {
-  if (isRegister.value && value !== form.password) {
-    callback(new Error('两次密码不一致'))
-  } else {
-    callback()
-  }
-}
-
-const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 6, message: '至少6位', trigger: 'blur' }],
-  confirmPassword: [{ validator: validateConfirm, trigger: 'blur' }],
-}
+const features = [
+  '手写 SSE 流式对话，逐字出现',
+  '角色卡 JSON 契约约束，导入导出 SillyTavern',
+  '对话一键改写为小说 / 剧本',
+  'MCP 能力开放，任何 AI 客户端可调用',
+]
 
 function toggleMode() {
   isRegister.value = !isRegister.value
-  formRef.value?.resetFields()
+  errorMessage.value = ''
+  form.password = ''
+  form.confirmPassword = ''
 }
 
 async function handleSubmit() {
-  await formRef.value.validate()
+  errorMessage.value = ''
+
+  if (!form.username) {
+    errorMessage.value = '请输入用户名'
+    return
+  }
+  if (form.password.length < 6) {
+    errorMessage.value = '密码至少 6 位'
+    return
+  }
+  if (isRegister.value && form.password !== form.confirmPassword) {
+    errorMessage.value = '两次输入的密码不一致'
+    return
+  }
+
   loading.value = true
   try {
     if (isRegister.value) {
-      await authStore.register({ username: form.username, nickname: form.nickname, password: form.password })
-      ElMessage.success('注册成功')
+      await authStore.register({
+        username: form.username,
+        nickname: form.nickname || form.username,
+        password: form.password,
+      })
     } else {
       await authStore.login({ username: form.username, password: form.password })
-      ElMessage.success('登录成功')
     }
     router.push(route.query.redirect || '/')
-  } catch { /* handled by interceptor */ }
-  finally { loading.value = false }
+  } catch (err) {
+    // 后端统一返回 Result，拦截器已弹出错误提示；这里兜底展示
+    errorMessage.value = err?.response?.data?.message || err?.message || '操作失败，请重试'
+  } finally {
+    loading.value = false
+  }
 }
 </script>

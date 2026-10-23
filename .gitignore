@@ -41,3 +41,6 @@ Thumbs.db
 # Misc
 *.swp
 *~
+
+# 本地截图（Playwright / 无头浏览器验证用）
+.shots/
