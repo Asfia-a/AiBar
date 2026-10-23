@@ -1,191 +1,305 @@
 <template>
-  <div class="insp-page space-y-8">
-    <header class="insp-hero relative overflow-hidden rounded-2xl px-6 py-8 sm:px-10 sm:py-10">
-      <div class="insp-orb insp-orb-a" aria-hidden="true" />
-      <div class="insp-orb insp-orb-b" aria-hidden="true" />
-      <div class="relative z-[1] flex flex-wrap items-end justify-between gap-4">
-        <div class="max-w-xl space-y-2">
-          <p class="text-[11px] tracking-[0.28em] uppercase text-tavern-400/90">Spark · Capture · Polish</p>
-          <h1 class="font-display text-4xl sm:text-5xl text-tavern-100 leading-tight">灵感记录</h1>
-          <p class="text-sm text-tavern-muted leading-relaxed">
-            把碎片念头钉在灯下。点开即可编辑，也可按你的文风配置交给 AI 润色。
-          </p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <el-button @click="prefsOpen = true">润色配置</el-button>
-          <el-button type="warning" @click="openCreate">写一条灵感</el-button>
-        </div>
+  <div class="space-y-6">
+    <header class="flex flex-wrap items-end justify-between gap-4">
+      <div class="space-y-2">
+        <h1 class="text-2xl font-semibold tracking-tight">灵感记录</h1>
+        <p class="max-w-2xl text-sm text-muted-foreground">
+          把碎片念头存在本地。点开即可编辑，也可以按你的文风交给 AI 润色。
+        </p>
+      </div>
+      <div class="flex gap-2">
+        <Button variant="outline" @click="prefsOpen = true">
+          <Settings2 class="size-4" />
+          润色配置
+        </Button>
+        <Button @click="openCreate">
+          <Plus class="size-4" />
+          写一条灵感
+        </Button>
       </div>
     </header>
 
-    <div class="flex flex-wrap items-center gap-2">
-      <button
+    <!-- 分类筛选 -->
+    <div class="flex flex-wrap items-center gap-1.5">
+      <Button
         v-for="t in tagFilters"
         :key="t"
-        type="button"
-        class="insp-chip"
-        :class="{ active: filterTag === t }"
+        :variant="filterTag === t ? 'secondary' : 'ghost'"
+        size="sm"
+        class="rounded-full"
         @click="filterTag = t"
       >
         {{ t }}
-      </button>
-      <span class="ml-auto text-xs text-tavern-muted">{{ filtered.length }} 条</span>
+      </Button>
+      <span class="ml-auto text-xs text-muted-foreground">{{ filtered.length }} 条</span>
     </div>
 
-    <div v-if="filtered.length" class="insp-masonry">
-      <article
-        v-for="(n, idx) in filtered"
+    <!-- 笔记瀑布流 -->
+    <div v-if="filtered.length" class="columns-1 gap-4 md:columns-2 xl:columns-3">
+      <Card
+        v-for="n in filtered"
         :key="n.id"
-        class="insp-note"
-        :style="{ '--accent': tagAccent(n.tag), '--delay': `${Math.min(idx, 8) * 45}ms` }"
+        class="mb-4 inline-block w-full break-inside-avoid cursor-pointer gap-3 py-4 transition-colors hover:border-border"
         @click="openEdit(n)"
       >
-        <div class="insp-note-glow" aria-hidden="true" />
-        <div class="relative z-[1] space-y-3">
+        <CardContent class="space-y-2.5">
           <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <span class="insp-tag">{{ n.tag }}</span>
-              <h3 class="font-display text-xl text-tavern-50 mt-2 leading-snug">{{ n.title }}</h3>
+            <div class="min-w-0 space-y-1.5">
+              <Badge variant="outline" class="font-normal">{{ n.tag }}</Badge>
+              <h3 class="text-base font-medium leading-snug">{{ n.title }}</h3>
             </div>
-            <div class="flex gap-1 shrink-0" @click.stop>
-              <el-button text type="warning" size="small" :loading="polishingId === n.id" @click="quickPolish(n)">
-                润色
-              </el-button>
-              <el-button text type="danger" size="small" @click="remove(n.id)">删</el-button>
+            <div class="flex shrink-0 gap-0.5" @click.stop>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title="AI 润色"
+                :disabled="polishingId === n.id"
+                @click="quickPolish(n)"
+              >
+                <Wand2 class="size-3" />
+              </Button>
+              <Button variant="ghost" size="icon-xs" title="删除" @click="remove(n.id)">
+                <Trash2 class="size-3" />
+              </Button>
             </div>
           </div>
-          <p class="text-sm text-tavern-200/80 whitespace-pre-wrap leading-relaxed">{{ n.body }}</p>
-          <div class="flex items-center justify-between text-[11px] text-tavern-muted pt-1">
+
+          <p class="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+            {{ n.body }}
+          </p>
+
+          <div class="flex items-center justify-between pt-1 text-[11px] text-muted-foreground/70">
             <span>{{ formatTime(n.updatedAt) }}</span>
-            <span v-if="n.polishedAt" class="text-tavern-400/80">已润色</span>
+            <span v-if="n.polishedAt">已润色</span>
           </div>
-        </div>
-      </article>
+        </CardContent>
+      </Card>
     </div>
-    <div v-else class="insp-empty">
-      <p class="font-display text-2xl text-tavern-200">灯还空着</p>
-      <p class="text-sm text-tavern-muted mt-2">记下第一句对白、一条法则，或一点说不清的氛围。</p>
-      <el-button class="mt-5" type="warning" @click="openCreate">写第一条</el-button>
+
+    <div
+      v-else
+      class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/70 py-16 text-center"
+    >
+      <span class="grid size-10 place-items-center rounded-xl bg-secondary">
+        <Feather class="size-4 text-muted-foreground" />
+      </span>
+      <p class="text-sm font-medium">还没有灵感</p>
+      <p class="text-xs text-muted-foreground">记下第一句对白、一条法则，或一点说不清的氛围。</p>
+      <Button class="mt-2" size="sm" @click="openCreate">写第一条</Button>
     </div>
 
     <!-- 编辑 / 润色 -->
-    <el-dialog
-      v-model="dialogOpen"
-      :title="editingId ? '编辑灵感' : '新灵感'"
-      width="720px"
-      top="6vh"
-      destroy-on-close
-      class="insp-dialog"
-    >
-      <el-form label-position="top" class="space-y-1">
-        <div class="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-3">
-          <el-form-item label="标题">
-            <el-input v-model="draft.title" maxlength="60" show-word-limit />
-          </el-form-item>
-          <el-form-item label="分类">
-            <el-select v-model="draft.tag" class="w-full">
-              <el-option v-for="t in tags" :key="t" :label="t" :value="t" />
-            </el-select>
-          </el-form-item>
-        </div>
-        <el-form-item label="内容">
-          <el-input v-model="draft.body" type="textarea" :rows="8" placeholder="对白、设定、氛围、未命名的念头…" />
-        </el-form-item>
-      </el-form>
+    <Dialog v-model:open="dialogOpen">
+      <DialogContent class="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{{ editingId ? '编辑灵感' : '新灵感' }}</DialogTitle>
+          <DialogDescription class="sr-only">记录一条灵感</DialogDescription>
+        </DialogHeader>
 
-      <div v-if="polishPreview" class="insp-compare mt-2">
-        <div class="flex items-center justify-between gap-2 mb-2">
-          <h4 class="font-display text-tavern-200">润色预览</h4>
-          <div class="flex gap-1">
-            <el-button size="small" @click="applyPolish">采用润色</el-button>
-            <el-button size="small" plain @click="polishPreview = ''">丢弃</el-button>
+        <div class="space-y-4">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+            <div class="space-y-2">
+              <Label for="note-title">标题</Label>
+              <Input id="note-title" v-model="draft.title" maxlength="60" placeholder="给这条念头起个名字" />
+            </div>
+            <div class="space-y-2">
+              <Label>分类</Label>
+              <div class="flex flex-wrap gap-1">
+                <Button
+                  v-for="t in tags"
+                  :key="t"
+                  :variant="draft.tag === t ? 'secondary' : 'outline'"
+                  size="xs"
+                  @click="draft.tag = t"
+                >
+                  {{ t }}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <Label for="note-body">内容</Label>
+            <Textarea
+              id="note-body"
+              v-model="draft.body"
+              :rows="8"
+              placeholder="对白、设定、氛围、还没成形的念头…"
+            />
+          </div>
+
+          <div v-if="polishPreview" class="space-y-2 rounded-lg border border-border/70 bg-secondary/40 p-3">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs font-medium text-muted-foreground">润色预览</p>
+              <div class="flex gap-1.5">
+                <Button size="xs" @click="applyPolish">采用</Button>
+                <Button size="xs" variant="ghost" @click="polishPreview = ''">丢弃</Button>
+              </div>
+            </div>
+            <div class="chat-md max-h-64 overflow-y-auto text-sm" v-html="renderMarkdown(polishPreview)" />
           </div>
         </div>
-        <p class="text-sm text-tavern-100 whitespace-pre-wrap leading-relaxed">{{ polishPreview }}</p>
-      </div>
 
-      <template #footer>
-        <div class="flex flex-wrap justify-between gap-2 w-full">
-          <el-button :loading="polishing" type="warning" plain @click="polishDraft">AI 润色</el-button>
+        <DialogFooter class="sm:justify-between">
+          <Button variant="outline" :disabled="polishing" @click="polishDraft">
+            <Wand2 class="size-4" />
+            {{ polishing ? '润色中…' : 'AI 润色' }}
+          </Button>
           <div class="flex gap-2">
-            <el-button @click="dialogOpen = false">取消</el-button>
-            <el-button type="warning" @click="save">保存</el-button>
+            <Button variant="ghost" @click="dialogOpen = false">取消</Button>
+            <Button @click="save">保存</Button>
           </div>
-        </div>
-      </template>
-    </el-dialog>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- 润色配置 -->
-    <el-drawer v-model="prefsOpen" title="AI 润色配置" size="400px" destroy-on-close>
-      <p class="text-xs text-tavern-muted mb-4">配置会保存在本机，润色时自动带上。</p>
-      <el-form label-position="top">
-        <el-form-item label="文风">
-          <el-radio-group v-model="prefs.style">
-            <el-radio-button value="literary">文艺</el-radio-button>
-            <el-radio-button value="colloquial">口语</el-radio-button>
-            <el-radio-button value="script">剧本</el-radio-button>
-            <el-radio-button value="poetic">诗意</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="润色强度">
-          <el-radio-group v-model="prefs.intensity">
-            <el-radio-button value="light">轻度</el-radio-button>
-            <el-radio-button value="medium">中度</el-radio-button>
-            <el-radio-button value="strong">深度</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="篇幅">
-          <el-radio-group v-model="prefs.length">
-            <el-radio-button value="shorten">压缩</el-radio-button>
-            <el-radio-button value="keep">保持</el-radio-button>
-            <el-radio-button value="expand">扩写</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="输出语言">
-          <el-select v-model="prefs.language" clearable placeholder="跟随原文" class="w-full">
-            <el-option label="跟随原文" value="" />
-            <el-option label="中文" value="中文" />
-            <el-option label="English" value="English" />
-            <el-option label="日本語" value="日本語" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="保留原意">
-          <el-switch v-model="prefs.keepMeaning" active-text="是" inactive-text="允许创意延伸" />
-        </el-form-item>
-        <el-form-item label="额外要求">
-          <el-input
-            v-model="prefs.customRules"
-            type="textarea"
-            :rows="5"
-            placeholder="例如：多用五感描写；保留「银色足迹」设定；对白用短句；不要网文套路…"
-          />
-        </el-form-item>
-      </el-form>
-      <div class="flex gap-2 mt-4">
-        <el-button type="warning" @click="savePrefs">保存配置</el-button>
-        <el-button plain @click="resetPrefs">恢复默认</el-button>
-      </div>
-    </el-drawer>
+    <Sheet v-model:open="prefsOpen">
+      <SheetContent side="right" class="w-full overflow-y-auto sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>AI 润色配置</SheetTitle>
+          <SheetDescription>配置保存在本机，润色时会自动带上。</SheetDescription>
+        </SheetHeader>
+
+        <div class="mt-6 space-y-5">
+          <div class="space-y-2">
+            <Label class="text-xs">文风</Label>
+            <div class="flex flex-wrap gap-1.5">
+              <Button
+                v-for="o in styleOptions"
+                :key="o.value"
+                :variant="prefs.style === o.value ? 'secondary' : 'outline'"
+                size="xs"
+                @click="prefs.style = o.value"
+              >
+                {{ o.label }}
+              </Button>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <Label class="text-xs">润色强度</Label>
+            <div class="flex flex-wrap gap-1.5">
+              <Button
+                v-for="o in intensityOptions"
+                :key="o.value"
+                :variant="prefs.intensity === o.value ? 'secondary' : 'outline'"
+                size="xs"
+                @click="prefs.intensity = o.value"
+              >
+                {{ o.label }}
+              </Button>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <Label class="text-xs">篇幅</Label>
+            <div class="flex flex-wrap gap-1.5">
+              <Button
+                v-for="o in lengthOptions"
+                :key="o.value"
+                :variant="prefs.length === o.value ? 'secondary' : 'outline'"
+                size="xs"
+                @click="prefs.length = o.value"
+              >
+                {{ o.label }}
+              </Button>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <Label class="text-xs">输出语言</Label>
+            <div class="flex flex-wrap gap-1.5">
+              <Button
+                v-for="o in languageOptions"
+                :key="o.value"
+                :variant="prefs.language === o.value ? 'secondary' : 'outline'"
+                size="xs"
+                @click="prefs.language = o.value"
+              >
+                {{ o.label }}
+              </Button>
+            </div>
+          </div>
+
+          <label class="flex cursor-pointer items-center justify-between gap-3 text-sm">
+            <span>
+              保留原意
+              <span class="block text-xs text-muted-foreground">关闭后允许 AI 自由延伸</span>
+            </span>
+            <Switch v-model="prefs.keepMeaning" />
+          </label>
+
+          <div class="space-y-2">
+            <Label for="rules" class="text-xs">额外要求</Label>
+            <Textarea
+              id="rules"
+              v-model="prefs.customRules"
+              :rows="5"
+              placeholder="例如：多用五感描写；保留「银色足迹」设定；对白用短句；不要网文套路…"
+            />
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <Button @click="savePrefs">保存配置</Button>
+            <Button variant="outline" @click="resetPrefs">恢复默认</Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   </div>
 </template>
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { toast } from 'vue-sonner'
+import { Feather, Plus, Settings2, Trash2, Wand2 } from 'lucide-vue-next'
 import { workshopPolishInspiration } from '../api/workshop'
+import { renderMarkdown } from '../utils/markdown'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 const STORAGE_KEY = 'tavern_inspiration_notes'
 const PREFS_KEY = 'tavern_inspiration_polish_prefs'
 const tags = ['人设', '对白', '剧情', '世界观', '其他']
 const tagFilters = ['全部', ...tags]
 
-const TAG_ACCENT = {
-  人设: '#d4a853',
-  对白: '#7eb8da',
-  剧情: '#e08a6a',
-  世界观: '#8fbf7f',
-  其他: '#a89070',
-}
+const styleOptions = [
+  { value: 'literary', label: '文艺' },
+  { value: 'colloquial', label: '口语' },
+  { value: 'script', label: '剧本' },
+  { value: 'poetic', label: '诗意' },
+]
+const intensityOptions = [
+  { value: 'light', label: '轻度' },
+  { value: 'medium', label: '中度' },
+  { value: 'strong', label: '深度' },
+]
+const lengthOptions = [
+  { value: 'shorten', label: '压缩' },
+  { value: 'keep', label: '保持' },
+  { value: 'expand', label: '扩写' },
+]
+const languageOptions = [
+  { value: '', label: '跟随原文' },
+  { value: '中文', label: '中文' },
+  { value: 'English', label: 'English' },
+  { value: '日本語', label: '日本語' },
+]
 
 const defaultPrefs = () => ({
   style: 'literary',
@@ -213,16 +327,12 @@ const filtered = computed(() => {
   return list.filter((n) => n.tag === filterTag.value)
 })
 
-function tagAccent(tag) {
-  return TAG_ACCENT[tag] || TAG_ACCENT['其他']
-}
-
 function loadNotes() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
     if (Array.isArray(raw) && raw.length) return raw
   } catch {
-    /* ignore */
+    /* 本地缓存损坏时回落到示例数据 */
   }
   const now = Date.now()
   return [
@@ -258,13 +368,13 @@ function persist() {
 function savePrefs() {
   localStorage.setItem(PREFS_KEY, JSON.stringify({ ...prefs }))
   prefsOpen.value = false
-  ElMessage.success('润色配置已保存')
+  toast.success('润色配置已保存')
 }
 
 function resetPrefs() {
   Object.assign(prefs, defaultPrefs())
   localStorage.setItem(PREFS_KEY, JSON.stringify({ ...prefs }))
-  ElMessage.success('已恢复默认配置')
+  toast.success('已恢复默认配置')
 }
 
 function formatTime(ts) {
@@ -309,7 +419,7 @@ function polishPayload(text, title, tag) {
 
 async function polishDraft() {
   if (!draft.body.trim()) {
-    ElMessage.warning('先写一点内容再润色')
+    toast.warning('先写一点内容再润色')
     return
   }
   polishing.value = true
@@ -317,9 +427,9 @@ async function polishDraft() {
     const res = await workshopPolishInspiration(polishPayload(draft.body, draft.title, draft.tag))
     polishPreview.value = res.polished || ''
     if (res.title && !draft.title.trim()) draft.title = res.title
-    ElMessage.success('润色完成，可预览后采用')
+    toast.success('润色完成，可预览后采用')
   } catch {
-    /* */
+    /* 接口错误由拦截器提示 */
   } finally {
     polishing.value = false
   }
@@ -329,7 +439,7 @@ function applyPolish() {
   if (!polishPreview.value) return
   draft.body = polishPreview.value
   polishPreview.value = ''
-  ElMessage.success('已采用润色结果，记得保存')
+  toast.success('已采用润色结果，记得保存')
 }
 
 async function quickPolish(n) {
@@ -346,7 +456,7 @@ async function quickPolish(n) {
         polishedAt: Date.now(),
       }
       persist()
-      ElMessage.success(`「${n.title}」已润色`)
+      toast.success(`「${n.title}」已润色`)
     }
   } catch {
     /* */
@@ -357,7 +467,7 @@ async function quickPolish(n) {
 
 function save() {
   if (!draft.title.trim() || !draft.body.trim()) {
-    ElMessage.warning('标题和内容都要写一点')
+    toast.warning('标题和内容都要写一点')
     return
   }
   const now = Date.now()
@@ -383,12 +493,13 @@ function save() {
   }
   persist()
   dialogOpen.value = false
-  ElMessage.success('已保存到本地')
+  toast.success('已保存到本地')
 }
 
 function remove(id) {
   notes.value = notes.value.filter((n) => n.id !== id)
   persist()
+  toast.success('已删除')
 }
 
 watch(
@@ -399,154 +510,3 @@ watch(
   { deep: true },
 )
 </script>
-
-<style scoped>
-.insp-hero {
-  background:
-    linear-gradient(135deg, rgba(212, 168, 83, 0.14), transparent 42%),
-    linear-gradient(210deg, rgba(45, 31, 20, 0.95), rgba(22, 16, 10, 0.98));
-  border: 1px solid rgba(212, 168, 83, 0.22);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
-}
-.insp-orb {
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(40px);
-  opacity: 0.45;
-  animation: insp-float 9s ease-in-out infinite;
-}
-.insp-orb-a {
-  width: 180px;
-  height: 180px;
-  right: 8%;
-  top: -40px;
-  background: rgba(212, 168, 83, 0.35);
-}
-.insp-orb-b {
-  width: 140px;
-  height: 140px;
-  right: 22%;
-  bottom: -50px;
-  background: rgba(126, 184, 218, 0.22);
-  animation-delay: -3s;
-}
-@keyframes insp-float {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    transform: translateY(-12px) scale(1.05);
-  }
-}
-
-.insp-chip {
-  border-radius: 999px;
-  padding: 0.35rem 0.85rem;
-  font-size: 12px;
-  color: #a89070;
-  background: rgba(45, 31, 20, 0.8);
-  border: 1px solid rgba(212, 168, 83, 0.15);
-  transition:
-    color 0.2s,
-    background 0.2s,
-    border-color 0.2s,
-    transform 0.2s;
-}
-.insp-chip:hover {
-  color: #f5e6c8;
-  transform: translateY(-1px);
-}
-.insp-chip.active {
-  color: #1a1209;
-  background: #d4a853;
-  border-color: transparent;
-}
-
-.insp-masonry {
-  columns: 1;
-  column-gap: 1rem;
-}
-@media (min-width: 768px) {
-  .insp-masonry {
-    columns: 2;
-  }
-}
-@media (min-width: 1200px) {
-  .insp-masonry {
-    columns: 3;
-  }
-}
-
-.insp-note {
-  break-inside: avoid;
-  margin-bottom: 1rem;
-  position: relative;
-  overflow: hidden;
-  border-radius: 1rem;
-  padding: 1.1rem 1.15rem;
-  cursor: pointer;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  background:
-    linear-gradient(160deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 55%),
-    rgba(32, 24, 16, 0.88);
-  animation: insp-rise 0.55s ease both;
-  animation-delay: var(--delay);
-  transition:
-    transform 0.25s ease,
-    border-color 0.25s ease,
-    box-shadow 0.25s ease;
-}
-.insp-note:hover {
-  transform: translateY(-4px);
-  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
-}
-.insp-note-glow {
-  position: absolute;
-  inset: auto -20% -40% auto;
-  width: 140px;
-  height: 140px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
-  filter: blur(28px);
-  opacity: 0.55;
-  pointer-events: none;
-}
-@keyframes insp-rise {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.insp-tag {
-  display: inline-block;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-}
-
-.insp-empty {
-  text-align: center;
-  padding: 4rem 1rem;
-  border-radius: 1rem;
-  border: 1px dashed rgba(212, 168, 83, 0.28);
-  background: rgba(26, 18, 9, 0.45);
-}
-
-.insp-compare {
-  border-radius: 0.85rem;
-  border: 1px solid rgba(212, 168, 83, 0.28);
-  background: rgba(212, 168, 83, 0.08);
-  padding: 0.9rem 1rem;
-}
-</style>

@@ -122,13 +122,18 @@
 
             <div class="flex min-w-0 max-w-[85%] flex-col" :class="m.role === 'user' ? 'items-end' : 'items-start'">
               <div
-                class="rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words"
+                class="rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words"
                 :class="
                   m.role === 'user'
-                    ? 'rounded-tr-md bg-secondary text-secondary-foreground'
+                    ? 'whitespace-pre-wrap rounded-tr-md bg-secondary text-secondary-foreground'
                     : 'rounded-tl-md border border-border/60 bg-card'
                 "
-              >{{ m.content }}<span v-if="m._streaming" class="ml-0.5 inline-block animate-pulse">▍</span></div>
+              >
+                <span v-if="m.role === 'user'">{{ m.content }}</span>
+                <!-- 模型输出带 markdown，解析后渲染；原始 HTML 已在 renderMarkdown 中丢弃 -->
+                <div v-else class="chat-md" v-html="renderMarkdown(m.content)" />
+                <span v-if="m._streaming" class="ml-0.5 inline-block animate-pulse">▍</span>
+              </div>
 
               <!-- 悬停时出现的消息操作 -->
               <div
@@ -258,6 +263,7 @@ import { createSession, deleteSession, getMessages, getSessions, streamChat, str
 import { favoriteCharacter, getCharacterDetail } from '../api/character'
 import { getTokenBalance } from '../api/user'
 import { useAuthStore } from '../stores/auth'
+import { renderMarkdown } from '../utils/markdown'
 import MockRechargeDialog from '../components/MockRechargeDialog.vue'
 import SessionList from '../components/chat/SessionList.vue'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'

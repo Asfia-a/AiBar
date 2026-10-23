@@ -1,184 +1,339 @@
 <template>
   <div class="space-y-8">
     <header class="space-y-2">
-      <h1 class="font-display text-3xl text-tavern-200">创意工坊</h1>
-      <p class="text-tavern-muted text-sm max-w-2xl">
-        AI 帮你写角色卡、生成立绘。草稿会暂存在本机并写入下方「制作记录」；工作区需自行点「清空工作区」关闭。
+      <h1 class="text-2xl font-semibold tracking-tight">创意工坊</h1>
+      <p class="max-w-2xl text-sm text-muted-foreground">
+        AI 帮你写角色卡、生成立绘。草稿会暂存在本机并写入下方「制作记录」，随时可以取回继续做。
       </p>
     </header>
 
-    <!-- AI 角色卡 -->
-    <section class="tavern-card p-5 space-y-4">
-      <div class="flex items-center justify-between gap-2 flex-wrap">
-        <h2 class="font-display text-xl text-tavern-200">AI 创建角色卡</h2>
-        <el-tag size="small" type="warning" effect="plain">对话 + 生图</el-tag>
-      </div>
-      <el-form label-position="top">
-        <el-form-item label="角色想法">
-          <el-input
-            v-model="idea"
-            type="textarea"
-            :rows="4"
-            placeholder="例如：雾港酒馆的沉默调酒师，会读唇语，说话极短，对真名过敏…"
-          />
-        </el-form-item>
-        <el-form-item label="附加世界观 / 灵感（可选）">
-          <el-input
-            v-model="worldContext"
-            type="textarea"
-            :rows="3"
-            placeholder="可从世界树复制，或点下方「填入世界树」"
-          />
-          <div class="mt-2 flex flex-wrap gap-2">
-            <el-button size="small" @click="fillFromWorldTree">填入世界树</el-button>
-            <el-button size="small" @click="fillFromInspiration">填入最新灵感</el-button>
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_400px]">
+      <!-- 左：生成表单 -->
+      <Card>
+        <CardHeader>
+          <CardTitle class="text-base">AI 创建角色卡</CardTitle>
+          <CardAction>
+            <Badge variant="secondary" class="font-normal">对话 + 生图</Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent class="space-y-5">
+          <div class="space-y-2">
+            <Label for="idea">角色想法</Label>
+            <Textarea
+              id="idea"
+              v-model="idea"
+              :rows="4"
+              placeholder="例如：雾港酒馆的沉默调酒师，会读唇语，说话极短，对真名过敏…"
+            />
           </div>
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="withAvatar">同时生成立绘并上传 OSS</el-checkbox>
-        </el-form-item>
-        <div class="flex flex-wrap gap-2">
-          <el-button type="warning" :loading="generating" @click="generate()">生成草稿</el-button>
-          <el-button type="primary" :loading="saving" :disabled="!draft" @click="useDirect">直接保存为我的角色</el-button>
-          <el-button :disabled="!draft" @click="exportSt">导出 ST JSON</el-button>
-          <el-button :disabled="!draft" @click="openEdit">去编辑页微调</el-button>
-          <el-button :disabled="!draft && !idea" plain @click="clearWorkspace({ clearIdea: true })">清空工作区</el-button>
-        </div>
-      </el-form>
 
-      <div v-if="draft" class="rounded-xl border border-tavern-700/50 bg-tavern-950/40 p-4 space-y-3">
-        <div class="flex gap-4 items-start">
-          <el-avatar v-if="draft.avatar" :size="88" :src="draft.avatar" shape="square" class="!rounded-lg" />
-          <div class="min-w-0 flex-1 space-y-1">
-            <h3 class="font-display text-2xl text-tavern-100">{{ draft.name }}</h3>
-            <p class="text-sm text-tavern-muted">{{ draft.description }}</p>
-            <div class="flex flex-wrap gap-1 items-center">
-              <el-tag v-if="draft.category" size="small" type="warning" effect="plain">{{ draft.category }}</el-tag>
-              <el-tag v-for="t in draft.tags || []" :key="t" size="small" effect="plain">{{ t }}</el-tag>
+          <div class="space-y-2">
+            <Label for="world">附加世界观 / 灵感（可选）</Label>
+            <Textarea
+              id="world"
+              v-model="worldContext"
+              :rows="3"
+              placeholder="可从世界树复制，或点下方按钮一键填入"
+            />
+            <div class="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" @click="fillFromWorldTree">填入世界树</Button>
+              <Button variant="outline" size="sm" @click="fillFromInspiration">填入最新灵感</Button>
             </div>
           </div>
-        </div>
-        <details class="text-sm text-tavern-muted">
-          <summary class="cursor-pointer text-tavern-300">人设与开场白</summary>
-          <p class="mt-2 whitespace-pre-wrap">{{ draft.personality }}</p>
-          <p class="mt-2 italic text-tavern-200">开场：{{ draft.greeting }}</p>
-        </details>
-        <div class="flex flex-wrap gap-2 items-end">
-          <el-input v-model="avatarPrompt" class="flex-1 min-w-[200px]" placeholder="立绘提示词（可改后重生）" />
-          <el-button :loading="avatarLoading" @click="regenAvatar">重生立绘</el-button>
-        </div>
+
+          <label class="flex cursor-pointer items-center gap-2 text-sm">
+            <Switch v-model="withAvatar" />
+            同时生成立绘并上传
+          </label>
+
+          <div class="flex flex-wrap gap-2 border-t border-border/60 pt-4">
+            <Button :disabled="generating" @click="generate()">
+              <Sparkles class="size-4" />
+              {{ generating ? '生成中…' : '生成草稿' }}
+            </Button>
+            <Button variant="secondary" :disabled="!draft || saving" @click="useDirect">
+              保存为我的角色
+            </Button>
+            <Button variant="outline" :disabled="!draft" @click="exportSt">导出 ST JSON</Button>
+            <Button variant="outline" :disabled="!draft" @click="openEdit">去编辑页微调</Button>
+            <Button
+              variant="ghost"
+              :disabled="!draft && !idea"
+              class="text-muted-foreground"
+              @click="clearWorkspace({ clearIdea: true })"
+            >
+              清空工作区
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <!-- 右：草稿预览 -->
+      <div class="lg:sticky lg:top-20 lg:self-start">
+        <Card class="overflow-hidden">
+          <CardHeader>
+            <CardTitle class="text-base">草稿预览</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div v-if="!draft" class="flex flex-col items-center justify-center gap-2 py-12 text-center">
+              <span class="grid size-10 place-items-center rounded-xl bg-secondary">
+                <FileText class="size-4 text-muted-foreground" />
+              </span>
+              <p class="text-sm text-muted-foreground">生成后会出现在这里</p>
+            </div>
+
+            <div v-else class="space-y-4">
+              <div class="flex gap-3">
+                <div class="size-20 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-secondary">
+                  <img v-if="draft.avatar" :src="draft.avatar" alt="" class="size-full object-cover" />
+                  <span v-else class="grid size-full place-items-center text-lg text-muted-foreground">
+                    {{ draft.name?.[0] || '?' }}
+                  </span>
+                </div>
+                <div class="min-w-0 flex-1 space-y-1">
+                  <h3 class="truncate text-lg font-medium">{{ draft.name }}</h3>
+                  <p class="line-clamp-3 text-xs text-muted-foreground">{{ draft.description }}</p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-1">
+                <Badge v-if="draft.category" variant="secondary" class="font-normal">{{ draft.category }}</Badge>
+                <Badge v-for="t in draft.tags || []" :key="t" variant="outline" class="font-normal">{{ t }}</Badge>
+              </div>
+
+              <div class="space-y-1.5 rounded-lg bg-secondary/50 p-3">
+                <p class="text-xs font-medium text-muted-foreground">人设</p>
+                <p class="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed">
+                  {{ draft.personality }}
+                </p>
+              </div>
+
+              <div class="space-y-1.5 rounded-lg bg-secondary/50 p-3">
+                <p class="text-xs font-medium text-muted-foreground">开场白</p>
+                <p class="text-xs italic leading-relaxed">{{ draft.greeting }}</p>
+              </div>
+
+              <div class="space-y-2 border-t border-border/60 pt-3">
+                <Label class="text-xs">立绘提示词</Label>
+                <Input v-model="avatarPrompt" placeholder="可改后重生" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="w-full"
+                  :disabled="avatarLoading"
+                  @click="regenAvatar"
+                >
+                  <ImagePlus class="size-4" />
+                  {{ avatarLoading ? '生成中…' : '重生立绘' }}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-    </section>
+    </div>
 
     <!-- 制作记录 -->
-    <section class="tavern-card p-5 space-y-4">
-      <div class="flex items-center justify-between gap-2 flex-wrap">
+    <section class="space-y-3">
+      <div class="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 class="font-display text-xl text-tavern-200">制作记录</h2>
-          <p class="text-xs text-tavern-muted mt-1">本机保存最近 {{ MAX_HISTORY }} 条生成结果，可随时取回继续做。</p>
+          <h2 class="text-lg font-medium">制作记录</h2>
+          <p class="text-xs text-muted-foreground">
+            本机保存最近 {{ MAX_HISTORY }} 条，可随时取回继续做。
+          </p>
         </div>
-        <el-button v-if="history.length" size="small" type="danger" plain @click="clearHistory">清空记录</el-button>
+        <Button v-if="history.length" variant="ghost" size="sm" class="text-muted-foreground" @click="askClearHistory">
+          <Trash2 class="size-4" />
+          清空记录
+        </Button>
       </div>
 
-      <div v-if="!history.length" class="text-sm text-tavern-muted py-6 text-center border border-dashed border-tavern-700/50 rounded-xl">
-        还没有制作记录。生成角色卡后会自动出现在这里。
+      <div
+        v-if="!history.length"
+        class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/70 py-12 text-center"
+      >
+        <p class="text-sm text-muted-foreground">还没有制作记录</p>
+        <p class="text-xs text-muted-foreground">生成角色卡后会自动出现在这里</p>
       </div>
 
-      <ul v-else class="space-y-3">
-        <li
-          v-for="item in history"
-          :key="item.id"
-          class="rounded-xl border border-tavern-700/40 bg-tavern-950/30 p-3 flex gap-3 items-start"
-        >
-          <el-avatar v-if="item.draft?.avatar" :size="56" :src="item.draft.avatar" shape="square" class="!rounded-md shrink-0" />
-          <div v-else class="h-14 w-14 rounded-md bg-tavern-800 flex items-center justify-center text-tavern-muted shrink-0 text-lg">
-            {{ item.draft?.name?.[0] || '?' }}
-          </div>
-          <div class="min-w-0 flex-1 space-y-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-medium text-tavern-100 truncate">{{ item.draft?.name || '未命名' }}</span>
-              <el-tag size="small" :type="statusTagType(item.status)" effect="plain">{{ statusLabel(item.status) }}</el-tag>
-              <span class="text-[11px] text-tavern-muted">{{ formatTime(item.updatedAt || item.createdAt) }}</span>
+      <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <Card v-for="item in history" :key="item.id" class="gap-3 py-4">
+          <CardContent class="space-y-3">
+            <div class="flex gap-3">
+              <div class="size-12 shrink-0 overflow-hidden rounded-lg border border-border/60 bg-secondary">
+                <img
+                  v-if="item.draft?.avatar"
+                  :src="item.draft.avatar"
+                  alt=""
+                  class="size-full object-cover"
+                />
+                <span v-else class="grid size-full place-items-center text-sm text-muted-foreground">
+                  {{ item.draft?.name?.[0] || '?' }}
+                </span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <span class="truncate text-sm font-medium">{{ item.draft?.name || '未命名' }}</span>
+                  <Badge variant="outline" class="shrink-0 font-normal">{{ statusLabel(item.status) }}</Badge>
+                </div>
+                <p class="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                  {{ item.idea || item.draft?.description }}
+                </p>
+                <p class="mt-1 text-[11px] text-muted-foreground/70">
+                  {{ formatTime(item.updatedAt || item.createdAt) }}
+                </p>
+              </div>
             </div>
-            <p class="text-xs text-tavern-muted line-clamp-2">{{ item.idea || item.draft?.description }}</p>
-            <div class="flex flex-wrap gap-1 pt-1">
-              <el-button size="small" @click="restoreRecord(item)">取回工作区</el-button>
-              <el-button size="small" type="primary" plain :loading="savingId === item.id" @click="saveRecord(item)">保存为我的角色</el-button>
-              <el-button size="small" plain @click="exportRecord(item)">导出 JSON</el-button>
-              <el-button
+
+            <div class="flex flex-wrap gap-1.5">
+              <Button variant="outline" size="xs" @click="restoreRecord(item)">取回</Button>
+              <Button
+                variant="secondary"
+                size="xs"
+                :disabled="savingId === item.id"
+                @click="saveRecord(item)"
+              >
+                保存为角色
+              </Button>
+              <Button variant="ghost" size="xs" @click="exportRecord(item)">导出</Button>
+              <Button
                 v-if="item.characterId"
-                size="small"
-                link
-                type="warning"
+                variant="ghost"
+                size="xs"
                 @click="router.push(`/character/${item.characterId}`)"
-              >查看角色</el-button>
-              <el-button size="small" link type="danger" @click="removeRecord(item.id)">删除</el-button>
+              >
+                查看
+              </Button>
+              <Button variant="ghost" size="xs" class="text-muted-foreground" @click="removeRecord(item.id)">
+                删除
+              </Button>
             </div>
-          </div>
-        </li>
-      </ul>
+          </CardContent>
+        </Card>
+      </div>
     </section>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <section class="tavern-card p-5 space-y-4">
-        <div class="flex items-center justify-between gap-2">
-          <h2 class="font-display text-xl text-tavern-200">角色语音</h2>
-          <el-tag size="small" type="info" effect="plain">占位</el-tag>
-        </div>
-        <p class="text-xs text-tavern-muted">为角色选择音色、语速与情绪，对话时可自动朗读回复。</p>
-        <el-form label-position="top" class="space-y-1">
-          <el-form-item label="音色">
-            <el-radio-group v-model="voice.timbre">
-              <el-radio-button value="warm">温柔</el-radio-button>
-              <el-radio-button value="cool">清冷</el-radio-button>
-              <el-radio-button value="bright">明亮</el-radio-button>
-              <el-radio-button value="deep">低沉</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item :label="`语速 ${voice.rate.toFixed(1)}x`">
-            <el-slider v-model="voice.rate" :min="0.7" :max="1.4" :step="0.1" />
-          </el-form-item>
-          <el-form-item label="试听文案">
-            <el-input v-model="voice.sample" type="textarea" :rows="2" />
-          </el-form-item>
-          <el-button type="warning" plain @click="previewVoice">试听（浏览器语音）</el-button>
-        </el-form>
-      </section>
+    <!-- 实验区 -->
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle class="text-base">角色语音</CardTitle>
+          <CardAction>
+            <Badge variant="outline" class="font-normal">实验</Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <p class="text-xs text-muted-foreground">选音色与语速，用浏览器语音合成试听。</p>
 
-      <section class="tavern-card p-5 space-y-4">
-        <div class="flex items-center justify-between gap-2">
-          <h2 class="font-display text-xl text-tavern-200">对话框 HTML 风格</h2>
-          <el-tag size="small" type="info" effect="plain">占位</el-tag>
-        </div>
-        <p class="text-xs text-tavern-muted">预设气泡皮肤，之后可写成自定义 HTML/CSS 模板。</p>
-        <el-radio-group v-model="styleId" class="flex flex-wrap gap-2">
-          <el-radio-button v-for="s in styles" :key="s.id" :value="s.id">{{ s.name }}</el-radio-button>
-        </el-radio-group>
-        <div class="rounded-xl border border-tavern-700/50 bg-tavern-950/40 p-4 min-h-[160px] space-y-3">
-          <p class="text-[11px] uppercase tracking-wider text-tavern-muted">预览 · {{ activeStyle.name }}</p>
-          <div class="flex justify-end">
-            <div :class="activeStyle.userClass">今晚月色真美。</div>
+          <div class="space-y-2">
+            <Label class="text-xs">音色</Label>
+            <div class="flex flex-wrap gap-1.5">
+              <Button
+                v-for="t in timbres"
+                :key="t.value"
+                :variant="voice.timbre === t.value ? 'secondary' : 'outline'"
+                size="xs"
+                @click="voice.timbre = t.value"
+              >
+                {{ t.label }}
+              </Button>
+            </div>
           </div>
-          <div class="flex justify-start gap-2 items-end">
-            <div class="h-8 w-8 rounded-full bg-tavern-700 shrink-0" />
-            <div :class="activeStyle.aiClass" v-html="activeStyle.sampleHtml" />
+
+          <div class="space-y-2">
+            <Label class="text-xs">语速 {{ voice.rate.toFixed(1) }}x</Label>
+            <input
+              v-model.number="voice.rate"
+              type="range"
+              min="0.7"
+              max="1.4"
+              step="0.1"
+              class="w-full accent-foreground"
+            />
           </div>
-        </div>
-      </section>
+
+          <div class="space-y-2">
+            <Label class="text-xs">试听文案</Label>
+            <Textarea v-model="voice.sample" :rows="2" />
+          </div>
+
+          <Button variant="outline" size="sm" @click="previewVoice">
+            <Volume2 class="size-4" />
+            试听
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle class="text-base">对话框风格</CardTitle>
+          <CardAction>
+            <Badge variant="outline" class="font-normal">实验</Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <p class="text-xs text-muted-foreground">预设气泡皮肤，之后可做成自定义模板。</p>
+
+          <div class="flex flex-wrap gap-1.5">
+            <Button
+              v-for="s in styles"
+              :key="s.id"
+              :variant="styleId === s.id ? 'secondary' : 'outline'"
+              size="xs"
+              @click="styleId = s.id"
+            >
+              {{ s.name }}
+            </Button>
+          </div>
+
+          <div class="min-h-[150px] space-y-3 rounded-xl border border-border/60 bg-secondary/30 p-4">
+            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">
+              预览 · {{ activeStyle.name }}
+            </p>
+            <div class="flex justify-end">
+              <div :class="activeStyle.userClass">今晚月色真美。</div>
+            </div>
+            <div class="flex items-end justify-start gap-2">
+              <div class="size-8 shrink-0 rounded-full bg-muted" />
+              <div :class="activeStyle.aiClass" v-html="activeStyle.sampleHtml" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
+
+    <!-- 确认弹窗 -->
+    <Dialog v-model:open="confirmOpen">
+      <DialogContent class="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{{ confirmTitle }}</DialogTitle>
+          <DialogDescription>{{ confirmText }}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" @click="confirmOpen = false">取消</Button>
+          <Button variant="destructive" @click="runConfirm">确定</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  workshopGenerateCharacter,
-  workshopGenerateAvatar,
-} from '../api/workshop'
+import { toast } from 'vue-sonner'
+import { FileText, ImagePlus, Sparkles, Trash2, Volume2 } from 'lucide-vue-next'
+import { workshopGenerateCharacter, workshopGenerateAvatar } from '../api/workshop'
 import { createCharacter } from '../api/character'
 import { downloadStCardJson } from '../utils/sillyTavernCard'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 const router = useRouter()
 const WORK_KEY = 'tavern_workshop_draft'
@@ -197,6 +352,32 @@ const avatarPrompt = ref('')
 const activeRecordId = ref(null)
 const history = ref([])
 
+/** 统一的小确认弹窗，替代 ElMessageBox */
+const confirmOpen = ref(false)
+const confirmTitle = ref('')
+const confirmText = ref('')
+let confirmAction = null
+
+function askConfirm(title, text, action) {
+  confirmTitle.value = title
+  confirmText.value = text
+  confirmAction = action
+  confirmOpen.value = true
+}
+
+function runConfirm() {
+  confirmOpen.value = false
+  confirmAction?.()
+  confirmAction = null
+}
+
+const timbres = [
+  { value: 'warm', label: '温柔' },
+  { value: 'cool', label: '清冷' },
+  { value: 'bright', label: '明亮' },
+  { value: 'deep', label: '低沉' },
+]
+
 const voice = reactive({
   timbre: 'warm',
   rate: 1,
@@ -207,22 +388,22 @@ const styles = [
   {
     id: 'tavern',
     name: '酒馆暖光',
-    userClass: 'max-w-[80%] rounded-2xl rounded-br-md bg-tavern-500/90 text-tavern-950 px-3 py-2 text-sm',
-    aiClass: 'max-w-[80%] rounded-2xl rounded-bl-md bg-tavern-800/90 text-tavern-100 px-3 py-2 text-sm border border-tavern-600/40',
+    userClass: 'max-w-[80%] rounded-2xl rounded-br-md bg-primary text-primary-foreground px-3 py-2 text-sm',
+    aiClass: 'max-w-[80%] rounded-2xl rounded-bl-md bg-card text-foreground px-3 py-2 text-sm border border-border/60',
     sampleHtml: '烛火晃了晃，她抬眼看你：<em>「……你来了。」</em>',
   },
   {
     id: 'ink',
     name: '水墨笺',
-    userClass: 'max-w-[80%] border border-tavern-500/40 bg-transparent text-tavern-200 px-3 py-2 text-sm italic',
-    aiClass: 'max-w-[80%] border-l-2 border-tavern-400 pl-3 text-tavern-100 text-sm leading-relaxed',
-    sampleHtml: '纸页翻动。<br/><span class="opacity-80">风过竹林，未闻足音。</span>',
+    userClass: 'max-w-[80%] border border-border bg-transparent text-foreground px-3 py-2 text-sm italic',
+    aiClass: 'max-w-[80%] border-l-2 border-foreground/50 pl-3 text-foreground text-sm leading-relaxed',
+    sampleHtml: '纸页翻动。<br /><span class="opacity-70">风过竹林，未闻足音。</span>',
   },
   {
     id: 'neon',
     name: '霓虹夜',
-    userClass: 'max-w-[80%] rounded-md bg-amber-700/80 text-amber-50 px-3 py-2 text-sm',
-    aiClass: 'max-w-[80%] rounded-md bg-tavern-900 text-cyan-100 px-3 py-2 text-sm border border-cyan-700/50',
+    userClass: 'max-w-[80%] rounded-md bg-secondary text-secondary-foreground px-3 py-2 text-sm',
+    aiClass: 'max-w-[80%] rounded-md bg-card text-foreground px-3 py-2 text-sm border border-border/60',
     sampleHtml: '信号接通。<strong>「目标已锁定。」</strong>',
   },
 ]
@@ -291,19 +472,8 @@ function clearWorkspace({ clearIdea = false } = {}) {
   }
 }
 
-function archiveAndClear() {
-  if (!draft.value) return
-  upsertHistory('archived')
-  clearWorkspace({ clearIdea: true })
-  ElMessage.success('已收入制作记录并清空工作区')
-}
-
 function statusLabel(s) {
   return ({ generated: '草稿', saved: '已保存', exported: '已导出', archived: '已归档', editing: '编辑中' })[s] || s
-}
-
-function statusTagType(s) {
-  return ({ generated: 'info', saved: 'success', exported: 'warning', archived: '', editing: 'warning' })[s] || 'info'
 }
 
 function formatTime(ts) {
@@ -315,7 +485,7 @@ function formatTime(ts) {
 
 function previewVoice() {
   if (!window.speechSynthesis) {
-    ElMessage.warning('当前浏览器不支持语音合成')
+    toast.warning('当前浏览器不支持语音合成')
     return
   }
   window.speechSynthesis.cancel()
@@ -329,7 +499,7 @@ function fillFromWorldTree() {
   try {
     const tree = JSON.parse(localStorage.getItem('tavern_world_tree') || '[]')
     if (!tree.length) {
-      ElMessage.warning('世界树还是空的')
+      toast.warning('世界树还是空的')
       return
     }
     const lines = []
@@ -339,9 +509,9 @@ function fillFromWorldTree() {
     }
     tree.forEach((r) => walk(r, 0))
     worldContext.value = lines.join('\n')
-    ElMessage.success('已填入世界树')
+    toast.success('已填入世界树')
   } catch {
-    ElMessage.error('读取世界树失败')
+    toast.error('读取世界树失败')
   }
 }
 
@@ -349,14 +519,14 @@ function fillFromInspiration() {
   try {
     const notes = JSON.parse(localStorage.getItem('tavern_inspiration_notes') || '[]')
     if (!notes.length) {
-      ElMessage.warning('还没有灵感记录')
+      toast.warning('还没有灵感记录')
       return
     }
     const latest = [...notes].sort((a, b) => b.updatedAt - a.updatedAt)[0]
     worldContext.value = `【灵感】${latest.title}\n${latest.body}`
-    ElMessage.success('已填入最新灵感')
+    toast.success('已填入最新灵感')
   } catch {
-    ElMessage.error('读取灵感失败')
+    toast.error('读取灵感失败')
   }
 }
 
@@ -380,7 +550,7 @@ function toCreatePayload(card) {
 
 async function generate() {
   if (!idea.value.trim()) {
-    ElMessage.warning('先写一点角色想法')
+    toast.warning('先写一点角色想法')
     return
   }
   generating.value = true
@@ -394,9 +564,9 @@ async function generate() {
     avatarPrompt.value = res.avatarPrompt || ''
     activeRecordId.value = null
     upsertHistory('generated')
-    ElMessage.success(withAvatar.value ? '已生成，并写入制作记录' : '角色卡已生成，并写入制作记录')
+    toast.success(withAvatar.value ? '已生成，并写入制作记录' : '角色卡已生成，并写入制作记录')
   } catch {
-    /* toast by interceptor */
+    /* 接口错误由拦截器提示 */
   } finally {
     generating.value = false
   }
@@ -404,7 +574,7 @@ async function generate() {
 
 async function useDirect() {
   if (!draft.value) {
-    ElMessage.warning('请先生成草稿')
+    toast.warning('请先生成草稿')
     return
   }
   saving.value = true
@@ -412,7 +582,7 @@ async function useDirect() {
     const card = await createCharacter(toCreatePayload(draft.value))
     upsertHistory('saved', { characterId: card.id })
     clearWorkspace({ clearIdea: true })
-    ElMessage.success('已保存为我的角色，工作区已清空')
+    toast.success('已保存为我的角色，工作区已清空')
     router.push(`/edit/${card.id}`)
   } catch {
     /* */
@@ -426,7 +596,7 @@ function exportSt() {
   downloadStCardJson(draft.value.stCard || draft.value)
   upsertHistory('exported')
   clearWorkspace()
-  ElMessage.success('已导出，草稿已收入制作记录并清空工作区')
+  toast.success('已导出，草稿已收入制作记录')
 }
 
 function openEdit() {
@@ -450,7 +620,7 @@ async function regenAvatar() {
     })
     draft.value = { ...draft.value, avatar: res.url }
     upsertHistory('generated')
-    ElMessage.success('立绘已更新')
+    toast.success('立绘已更新')
   } catch {
     /* */
   } finally {
@@ -464,7 +634,7 @@ function restoreRecord(item) {
   draft.value = cloneDraft(item.draft)
   avatarPrompt.value = item.avatarPrompt || item.draft?.avatarPrompt || ''
   activeRecordId.value = item.id
-  ElMessage.success(`已取回「${item.draft?.name || '草稿'}」`)
+  toast.success(`已取回「${item.draft?.name || '草稿'}」`)
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -483,7 +653,7 @@ async function saveRecord(item) {
       }
       saveHistory()
     }
-    ElMessage.success('已保存为我的角色')
+    toast.success('已保存为我的角色')
     router.push(`/edit/${card.id}`)
   } catch {
     /* */
@@ -500,7 +670,7 @@ function exportRecord(item) {
     history.value[idx] = { ...history.value[idx], status: 'exported', updatedAt: Date.now() }
     saveHistory()
   }
-  ElMessage.success('已下载 JSON')
+  toast.success('已下载 JSON')
 }
 
 function removeRecord(id) {
@@ -509,14 +679,12 @@ function removeRecord(id) {
   if (activeRecordId.value === id) activeRecordId.value = null
 }
 
-async function clearHistory() {
-  try {
-    await ElMessageBox.confirm('确定清空全部制作记录？不可恢复。', '清空记录', { type: 'warning' })
+function askClearHistory() {
+  askConfirm('清空制作记录', '将删除全部本地制作记录，不可恢复。', () => {
     history.value = []
     saveHistory()
-  } catch {
-    /* cancel */
-  }
+    toast.success('已清空')
+  })
 }
 
 function persistWork() {
@@ -552,14 +720,15 @@ try {
   // 旧版滞留草稿：迁入制作记录并清空工作区，避免一直挂着
   if (draft.value) {
     const already = history.value.some(
-      (h) => h.id === activeRecordId.value
-        || (h.draft?.name === draft.value.name && h.idea === idea.value),
+      (h) =>
+        h.id === activeRecordId.value ||
+        (h.draft?.name === draft.value.name && h.idea === idea.value),
     )
     if (!already) upsertHistory('archived')
     clearWorkspace({ clearIdea: true })
   }
 } catch {
-  /* */
+  /* 本地缓存损坏时忽略 */
 }
 
 watch([idea, worldContext, withAvatar, voice, styleId, draft, avatarPrompt, activeRecordId], persistWork, {

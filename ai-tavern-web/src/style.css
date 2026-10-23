@@ -158,6 +158,105 @@
 }
 
 /*
+ * markdown 内容排版（模型输出、叙事作品共用）
+ * 用主题变量取色，暗色/亮色都跟着变
+ */
+.chat-md > :first-child {
+  margin-top: 0;
+}
+.chat-md > :last-child {
+  margin-bottom: 0;
+}
+.chat-md p {
+  margin: 0.5em 0;
+}
+.chat-md strong {
+  font-weight: 600;
+  color: var(--foreground);
+}
+.chat-md em {
+  font-style: italic;
+}
+.chat-md h1,
+.chat-md h2,
+.chat-md h3,
+.chat-md h4 {
+  margin: 1em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.chat-md h1 {
+  font-size: 1.25em;
+}
+.chat-md h2 {
+  font-size: 1.15em;
+}
+.chat-md h3,
+.chat-md h4 {
+  font-size: 1.05em;
+}
+.chat-md ul,
+.chat-md ol {
+  margin: 0.5em 0;
+  padding-left: 1.25em;
+}
+.chat-md ul {
+  list-style: disc;
+}
+.chat-md ol {
+  list-style: decimal;
+}
+.chat-md li {
+  margin: 0.2em 0;
+}
+.chat-md hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.chat-md a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-md code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--muted);
+  font-size: 0.9em;
+}
+.chat-md pre {
+  margin: 0.6em 0;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--muted) 60%, transparent);
+  padding: 0.75em;
+}
+.chat-md pre code {
+  padding: 0;
+  background: transparent;
+}
+.chat-md blockquote {
+  margin: 0.6em 0;
+  border-left: 2px solid var(--border);
+  padding-left: 0.75em;
+  color: var(--muted-foreground);
+}
+.chat-md table {
+  margin: 0.6em 0;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+.chat-md th,
+.chat-md td {
+  border: 1px solid var(--border);
+  padding: 0.35em 0.5em;
+  text-align: left;
+}
+
+/*
  * 浏览器自动填充（记住密码）会给输入框刷一层浅蓝底 + 强制深色字，
  * 在暗色界面上非常扎眼。用 inset 阴影盖住底色，并强制沿用主题色。
  */
