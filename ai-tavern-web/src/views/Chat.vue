@@ -61,6 +61,17 @@
           充值
         </Button>
 
+        <!-- 作者注释生效时给个显式标记，否则用户会忘记自己设过 -->
+        <Button
+          v-if="sessionId && hasAuthorNote"
+          variant="ghost"
+          size="icon-sm"
+          title="作者注释生效中"
+          @click="authorNoteOpen = true"
+        >
+          <StickyNote class="size-4" />
+        </Button>
+
         <DropdownMenu v-if="sessionId">
           <DropdownMenuTrigger as-child>
             <Button variant="ghost" size="icon-sm">
@@ -68,6 +79,10 @@
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem class="cursor-pointer" @select="authorNoteOpen = true">
+              <StickyNote class="size-4 opacity-70" />
+              作者注释
+            </DropdownMenuItem>
             <DropdownMenuItem class="cursor-pointer" @select="removeSession">
               <Trash2 class="size-4 opacity-70" />
               删除这段会话
@@ -137,20 +152,61 @@
 
               <!-- 悬停时出现的消息操作 -->
               <div
-                class="mt-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+                class="mt-1 flex flex-wrap items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
                 :class="m.role === 'user' ? 'flex-row-reverse' : ''"
               >
                 <Button variant="ghost" size="icon-xs" title="复制" @click="copyMessage(m)">
                   <Copy class="size-3" />
                 </Button>
+
+                <!-- 多版本：左右切，右箭头到头了就用「再生成一版」 -->
+                <template v-if="m.role === 'assistant' && m.id && !streaming">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    title="上一版"
+                    :disabled="(m.swipeIndex || 0) <= 0"
+                    @click="switchSwipe(m, (m.swipeIndex || 0) - 1)"
+                  >
+                    <ChevronLeft class="size-3" />
+                  </Button>
+                  <span
+                    class="min-w-7 text-center text-[10px] tabular-nums text-muted-foreground"
+                    :title="`共 ${m.swipeCount || 1} 版`"
+                  >
+                    {{ (m.swipeIndex || 0) + 1 }}/{{ m.swipeCount || 1 }}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    title="下一版"
+                    :disabled="(m.swipeIndex || 0) >= (m.swipeCount || 1) - 1"
+                    @click="switchSwipe(m, (m.swipeIndex || 0) + 1)"
+                  >
+                    <ChevronRight class="size-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon-xs" title="再生成一版" @click="newSwipe(m)">
+                    <RotateCcw class="size-3" />
+                  </Button>
+                </template>
+
                 <Button
-                  v-if="m.role === 'assistant' && m.id && !streaming"
+                  v-if="m.id && !streaming"
                   variant="ghost"
                   size="icon-xs"
-                  title="重新生成"
-                  @click="regenerate(m.id)"
+                  title="编辑"
+                  @click="openEdit(m)"
                 >
-                  <RotateCcw class="size-3" />
+                  <Pencil class="size-3" />
+                </Button>
+                <Button
+                  v-if="m.id && !streaming"
+                  variant="ghost"
+                  size="icon-xs"
+                  title="从这里分支"
+                  @click="branch(m)"
+                >
+                  <GitBranch class="size-3" />
                 </Button>
               </div>
             </div>
@@ -239,6 +295,34 @@
     </Sheet>
 
     <MockRechargeDialog v-model="rechargeOpen" prefer="basic" @success="onRecharged" />
+
+    <AuthorNotePanel v-model:open="authorNoteOpen" :session-id="sessionId" @saved="refreshSessions" />
+
+    <!-- 编辑消息：改文本不重新生成，也不额外扣积分 -->
+    <Dialog v-model:open="editOpen">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>编辑消息</DialogTitle>
+          <DialogDescription>
+            保存后立即生效，不会重新问模型，也不额外扣积分。AI 那边不会自动知道这次修改。
+          </DialogDescription>
+        </DialogHeader>
+        <Textarea
+          v-model="editText"
+          :rows="8"
+          class="mt-2 resize-y text-[13px] leading-relaxed"
+          placeholder="改写这段内容…"
+        />
+        <DialogFooter class="mt-4 flex-row justify-end gap-2">
+          <Button variant="outline" @click="editOpen = false">取消</Button>
+          <Button :disabled="editSaving || !editText.trim()" @click="submitEdit">
+            <Loader2 v-if="editSaving" class="size-4 animate-spin" />
+            <Check v-else class="size-4" />
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
@@ -248,26 +332,53 @@ import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import {
   ArrowUp,
+  Check,
+  ChevronLeft,
+  ChevronRight,
   Coins,
   Copy,
+  GitBranch,
   Heart,
+  Loader2,
   MoreHorizontal,
   PanelLeft,
+  Pencil,
   Plus,
   RotateCcw,
   Sparkles,
   Square,
+  StickyNote,
   Trash2,
 } from 'lucide-vue-next'
-import { createSession, deleteSession, getMessages, getSessions, streamChat, streamRegenerate } from '../api/chat'
+import {
+  branchSession,
+  createSession,
+  deleteSession,
+  editMessage,
+  getMessages,
+  getSessions,
+  selectSwipe,
+  streamChat,
+  streamSwipe,
+} from '../api/chat'
 import { favoriteCharacter, getCharacterDetail } from '../api/character'
 import { getTokenBalance } from '../api/user'
 import { useAuthStore } from '../stores/auth'
 import { renderMarkdown } from '../utils/markdown'
 import MockRechargeDialog from '../components/MockRechargeDialog.vue'
+import AuthorNotePanel from '../components/chat/AuthorNotePanel.vue'
 import SessionList from '../components/chat/SessionList.vue'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -300,6 +411,11 @@ const pointsBalance = ref(0)
 const tokensPerPoint = ref(1000)
 const rechargeOpen = ref(false)
 const mobileSessionsOpen = ref(false)
+const authorNoteOpen = ref(false)
+const editOpen = ref(false)
+const editTarget = ref(null)
+const editText = ref('')
+const editSaving = ref(false)
 /** 用户是否贴在底部：贴底才自动跟随流式输出，否则不打断向上翻阅 */
 const stickToBottom = ref(true)
 let suppressLoad = false
@@ -318,6 +434,15 @@ const characterName = computed(
 )
 
 const userName = computed(() => authStore.user?.nickname || authStore.user?.username || '我')
+
+/** 会话列表里已经带了 author_note / an_frequency，直接用，不额外请求 */
+const hasAuthorNote = computed(() => {
+  const s = current.value
+  if (!s) return false
+  const note = s.authorNote ?? s.author_note
+  const freq = s.anFrequency ?? s.an_frequency
+  return !!note && String(note).trim() !== '' && (freq == null || Number(freq) > 0)
+})
 
 const bgUrl = computed(() => {
   const url = current.value?.characterAvatar || current.value?.character_avatar || ''
@@ -558,33 +683,118 @@ async function send() {
   }
 }
 
-async function regenerate(messageId) {
-  if (streaming.value) return
+/**
+ * 再生成一版：不复用、不覆盖，直接在原消息上加一个版本。
+ *
+ * 流式期间先把气泡清空当作占位；失败时回滚成原来那一版，别让用户丢掉已看到的内容。
+ */
+async function newSwipe(m) {
+  if (streaming.value || !m.id) return
+  if (pointsBalance.value <= 0) {
+    toast.warning('积分不足，请先充值或签到')
+    rechargeOpen.value = true
+    return
+  }
+
+  const backup = { content: m.content, index: m.swipeIndex || 0 }
   streaming.value = true
-  messages.value = messages.value.filter((m) => m.id !== messageId)
-  const assistantTmp = `a-${Date.now()}`
-  messages.value.push({ role: 'assistant', content: '', _tmp: assistantTmp, _streaming: true })
+  m.content = ''
+  m._streaming = true
   stickToBottom.value = true
+  abortCtrl = new AbortController()
   await scrollBottom()
 
+  const restore = () => {
+    m.content = backup.content
+    m.swipeIndex = backup.index
+    m._streaming = false
+    streaming.value = false
+  }
+
   try {
-    await streamRegenerate(sessionId.value, messageId, {
+    await streamSwipe(m.id, {
       onChunk: ({ content, meta }) => {
         if (meta) ctxMeta.value = meta
-        appendByTmp(assistantTmp, content)
+        if (content) {
+          m.content += content
+          if (stickToBottom.value) scrollBottom()
+        }
       },
       onDone: async () => {
-        stopStreamingFlag(assistantTmp)
+        m._streaming = false
+        streaming.value = false
         await loadMessages()
+        await refreshSessions()
+        await refreshTokenBalance()
       },
       onError: (e) => {
-        stopStreamingFlag(assistantTmp)
-        toast.error(e?.message || '重新生成失败')
+        restore()
+        toast.error(e?.message || '再生成失败')
       },
+      signal: abortCtrl.signal,
     })
   } catch (e) {
-    stopStreamingFlag(assistantTmp)
-    if (e?.name !== 'AbortError') toast.error(e?.message || '重新生成失败')
+    if (e?.name === 'AbortError') {
+      // 用户主动停止：保留已收到的半截，重新拉一次拿真实的版本号
+      m._streaming = false
+      streaming.value = false
+      await loadMessages()
+    } else {
+      restore()
+      toast.error(e?.message || '再生成失败')
+    }
+  }
+}
+
+/** 左右切版本：纯读库，不扣积分 */
+async function switchSwipe(m, index) {
+  const count = m.swipeCount || 1
+  if (streaming.value || !m.id || index < 0 || index >= count || index === (m.swipeIndex || 0)) {
+    return
+  }
+  try {
+    const res = await selectSwipe(m.id, index)
+    m.content = res?.content ?? m.content
+    m.swipeIndex = res?.swipeIndex ?? index
+    m.swipeCount = res?.swipeCount ?? count
+  } catch (e) {
+    toast.error(e?.message || '切换版本失败')
+  }
+}
+
+function openEdit(m) {
+  editTarget.value = m
+  editText.value = m.content || ''
+  editOpen.value = true
+}
+
+async function submitEdit() {
+  const target = editTarget.value
+  const text = editText.value.trim()
+  if (!target?.id || !text) return
+  editSaving.value = true
+  try {
+    const res = await editMessage(target.id, text)
+    target.content = res?.content ?? text
+    editOpen.value = false
+    toast.success('已保存')
+  } catch (e) {
+    toast.error(e?.message || '保存失败')
+  } finally {
+    editSaving.value = false
+  }
+}
+
+/** 分支：复制到这条消息为止，原会话不动 */
+async function branch(m) {
+  if (streaming.value || !m.id) return
+  try {
+    const s = await branchSession(m.id)
+    await refreshSessions()
+    toast.success('已分支出一段新会话，原对话没动')
+    router.push(`/chat/${s.id}`)
+  } catch (e) {
+    toast.error(e?.message || '分支失败')
   }
 }
 

@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS t_character (
     temperature     DECIMAL(3,2) DEFAULT 0.70,
     top_p           DECIMAL(3,2) DEFAULT 0.90,
     max_tokens      INT DEFAULT 500,
+    top_k               INT COMMENT 'top_k 采样；NULL=不下发（仅自建推理服务支持）',
+    frequency_penalty   DECIMAL(3,2) COMMENT '-2~2，按词频惩罚，NULL=不下发',
+    presence_penalty    DECIMAL(3,2) COMMENT '-2~2，鼓励新话题，NULL=不下发',
+    repetition_penalty  DECIMAL(4,2) COMMENT '0.8~1.5，非 OpenAI 标准，NULL=不下发',
+    stop_words          VARCHAR(255) COMMENT '停止词，多个用 | 分隔',
     chat_count      INT DEFAULT 0,
     rating          DECIMAL(3,2) DEFAULT 0.00,
     rating_count    INT DEFAULT 0,
@@ -92,8 +97,22 @@ CREATE TABLE IF NOT EXISTS t_chat_message (
     role        VARCHAR(10) NOT NULL COMMENT 'user/assistant/system',
     content     TEXT NOT NULL,
     tokens      INT DEFAULT 0,
+    swipe_count INT DEFAULT 1 COMMENT '共几条备选回复（含当前这条）',
+    swipe_index INT DEFAULT 0 COMMENT '当前展示第几条，从 0 开始',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_session (session_id)
+);
+
+-- 同一轮回复的多个版本：滑动手势在 t_message_swipe 里左右切
+CREATE TABLE IF NOT EXISTS t_message_swipe (
+    id          BIGINT PRIMARY KEY AUTO_INCREMENT,
+    message_id  BIGINT NOT NULL,
+    idx         INT NOT NULL DEFAULT 0 COMMENT '版本序号，0 是第一次生成',
+    content     TEXT NOT NULL,
+    tokens      INT DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_message_idx (message_id, idx),
+    INDEX idx_message (message_id)
 );
 
 CREATE TABLE IF NOT EXISTS t_token_log (
@@ -229,8 +248,10 @@ CREATE TABLE IF NOT EXISTS t_model_config (
     base_url VARCHAR(255),
     model_name VARCHAR(100),
     context_window_size INT DEFAULT 20,
-    temperature_default DECIMAL(3,2) DEFAULT 0.70,
-    enabled TINYINT DEFAULT 1,
+    temperature DECIMAL(3,2) DEFAULT 0.70,
+    top_p DECIMAL(3,2) DEFAULT 0.90,
+    max_tokens INT DEFAULT 500,
+    status TINYINT DEFAULT 1 COMMENT '1启用 0停用',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 

@@ -93,6 +93,25 @@ class PromptEngineTest {
     }
 
     @Test
+    @DisplayName("作者注释 depth=0：挂在历史末尾，不会被丢掉")
+    void authorNoteAtTail() {
+        PromptInput in = PromptInput.builder()
+                .character("林晚晴", "", "", "", "", "")
+                .history(turns(2))
+                .authorNote("请用短句", 0, 1, 1)
+                .budget(6000, 500)
+                .build();
+
+        PromptBundle bundle = engine.build(in);
+        List<Map<String, String>> m = bundle.messages();
+        // system + 2 条历史 + 末尾的注释
+        assertEquals(4, m.size());
+        assertEquals("system", m.get(3).get("role"));
+        assertTrue(m.get(3).get("content").contains("请用短句"));
+        assertTrue(bundle.authorNoteChars() > 0);
+    }
+
+    @Test
     @DisplayName("频率没到就不插作者注释")
     void authorNoteFrequency() {
         PromptInput in = PromptInput.builder()
@@ -123,6 +142,27 @@ class PromptEngineTest {
         // 保留下来的应该是最新的那些
         String lastDialogue = bundle.messages().get(bundle.messages().size() - 1).get("content");
         assertEquals(history.get(9).content(), lastDialogue);
+    }
+
+    @Test
+    @DisplayName("角色卡写得很长时，历史对话也不能被挤成 0 条")
+    void longCardStillKeepsHistory() {
+        // 回归用例：曾经因为「剩余预算 = 总预算 - 固定部分 - 输出预留」，
+        // 长卡把预算吃光后 historyBudget 变成 0，模型看不到对话，
+        // 会回出「How can I help you?」这种完全跳出人设的话。
+        String hugeDescription = "很长的人设描述".repeat(800); // 约 5600 token
+        List<PromptInput.Turn> history = turns(6);
+
+        PromptInput in = PromptInput.builder()
+                .character("绘梨衣", hugeDescription, "", "", "", "")
+                .history(history)
+                .budget(8000, 500)
+                .build();
+
+        PromptBundle bundle = engine.build(in);
+        assertTrue(bundle.usedRounds() > 0, "历史不能被全部丢弃");
+        String last = bundle.messages().get(bundle.messages().size() - 1).get("content");
+        assertEquals(history.get(history.size() - 1).content(), last);
     }
 
     @Test

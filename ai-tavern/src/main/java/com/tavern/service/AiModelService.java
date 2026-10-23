@@ -15,8 +15,12 @@ import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -56,9 +60,40 @@ public class AiModelService {
     @Value("${ai.image.size:1024x1024}")
     private String imageSize;
 
+    /**
+     * 非标准采样参数（top_k / repetition_penalty）的下发策略：
+     * <ul>
+     *   <li>{@code auto}（默认）：只有 base_url 指向本机/局域网的自建推理服务才下发。
+     *       OpenAI、DeepSeek 这类云端网关会把不认识的字段当成错误参数，直接用 400 拒掉；</li>
+     *   <li>{@code always}：总是下发，适用于自建网关；</li>
+     *   <li>{@code never}：从不下发。</li>
+     * </ul>
+     */
+    @Value("${ai.model.extended-params:auto}")
+    private String extendedParams;
+
     public record StreamResult(String content, int totalTokens) {}
 
     public record ImageResult(String url, String b64Json) {}
+
+    /**
+     * 一次对话请求的采样参数。
+     *
+     * <p>哪些字段可空，就表示「这个开关没开」：不下发，交给服务端默认值。
+     * 这样老角色卡（只有 temperature/top_p/max_tokens）的行为完全不变。
+     */
+    public record ChatParams(double temperature, double topP, int maxTokens,
+                             Integer topK, Double frequencyPenalty, Double presencePenalty,
+                             Double repetitionPenalty, List<String> stop) {
+        public ChatParams {
+            stop = stop == null ? List.of() : List.copyOf(stop);
+        }
+
+        /** 工坊、叙事等内部调用：只用三家都认的三个参数 */
+        public static ChatParams simple(double temperature, double topP, int maxTokens) {
+            return new ChatParams(temperature, topP, maxTokens, null, null, null, null, List.of());
+        }
+    }
 
     /** 非流式对话，供工坊生成角色卡等 */
     public String chatCompletion(List<Map<String, String>> messages, double temperature, int maxTokens) {
@@ -173,8 +208,7 @@ public class AiModelService {
         return url;
     }
 
-    public StreamResult streamChat(List<Map<String, String>> messages,
-                                   double temperature, double topP, int maxTokens,
+    public StreamResult streamChat(List<Map<String, String>> messages, ChatParams params,
                                    Consumer<String> onDelta) {
         ModelConfig cfg = resolveConfig();
         String apiKey = StringUtils.hasText(cfg.getApiKey()) ? cfg.getApiKey() : defaultApiKey;
@@ -191,14 +225,8 @@ public class AiModelService {
         }
 
         try {
-            Map<String, Object> body = Map.of(
-                    "model", cfg.getModelName() != null ? cfg.getModelName() : defaultModelName,
-                    "messages", messages,
-                    "temperature", temperature,
-                    "top_p", topP,
-                    "max_tokens", maxTokens,
-                    "stream", true
-            );
+            Map<String, Object> body = buildRequestBody(cfg, messages, defaultModelName, params,
+                    true, allowExtendedParams(cfg));
             String json = objectMapper.writeValueAsString(body);
             String url = chatCompletionsUrl(cfg.getBaseUrl());
             Request request = new Request.Builder()
@@ -248,6 +276,92 @@ public class AiModelService {
             log.error("AI stream error", e);
             throw new BusinessException(ErrorCode.AI_ERROR.getCode(), e.getMessage());
         }
+    }
+
+    /**
+     * 组装 /chat/completions 的请求体。
+     *
+     * <p>拆成静态方法是为了能单测：不连网、不读配置，只验证「该带什么、不该带什么」。
+     * 这里的取舍很关键——云端网关对不认识的参数是直接报错，不是忽略，
+     * 所以 top_k / repetition_penalty 只在自建推理服务上才发。
+     */
+    static Map<String, Object> buildRequestBody(ModelConfig cfg,
+                                                List<Map<String, String>> messages,
+                                                String fallbackModel,
+                                                ChatParams params,
+                                                boolean stream,
+                                                boolean allowExtended) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", StringUtils.hasText(cfg.getModelName()) ? cfg.getModelName() : fallbackModel);
+        body.put("messages", messages);
+        body.put("temperature", params.temperature());
+        body.put("top_p", params.topP());
+        body.put("max_tokens", params.maxTokens());
+        if (params.frequencyPenalty() != null) {
+            body.put("frequency_penalty", params.frequencyPenalty());
+        }
+        if (params.presencePenalty() != null) {
+            body.put("presence_penalty", params.presencePenalty());
+        }
+        if (!params.stop().isEmpty()) {
+            body.put("stop", params.stop());
+        }
+        if (allowExtended) {
+            if (params.topK() != null) {
+                body.put("top_k", params.topK());
+            }
+            if (params.repetitionPenalty() != null) {
+                body.put("repetition_penalty", params.repetitionPenalty());
+            }
+        }
+        body.put("stream", stream);
+        return body;
+    }
+
+    /** 停止词串（| 分隔）→ 列表；OpenAI 兼容接口最多接受 4 条 */
+    public static List<String> parseStopWords(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(raw.split("\\|"))
+                // 输入框里没法直接敲换行，约定写 \n 表示换行（"\\n用户:" 这类停止词很常见）
+                .map(s -> s.trim().replace("\\n", "\n").replace("\\t", "\t"))
+                .filter(s -> !s.isEmpty())
+                .limit(4)
+                .toList();
+    }
+
+    private boolean allowExtendedParams(ModelConfig cfg) {
+        if ("always".equalsIgnoreCase(extendedParams)) {
+            return true;
+        }
+        if ("never".equalsIgnoreCase(extendedParams)) {
+            return false;
+        }
+        String baseUrl = StringUtils.hasText(cfg.getBaseUrl()) ? cfg.getBaseUrl() : defaultBaseUrl;
+        return isSelfHosted(baseUrl);
+    }
+
+    /** 本机 / 局域网地址 = 多半是 Ollama、vLLM、LM Studio，这些才认 top_k 与 repetition_penalty */
+    static boolean isSelfHosted(String baseUrl) {
+        if (!StringUtils.hasText(baseUrl)) {
+            return false;
+        }
+        String lower = baseUrl.toLowerCase(Locale.ROOT);
+        String host;
+        try {
+            host = URI.create(lower).getHost();
+        } catch (IllegalArgumentException e) {
+            host = null;
+        }
+        if (host == null) {
+            host = lower;
+        }
+        return host.equals("localhost") || host.equals("127.0.0.1") || host.equals("0.0.0.0")
+                || host.equals("::1") || host.equals("[::1]")
+                || host.startsWith("192.168.") || host.startsWith("10.")
+                || host.matches("172\\.(1[6-9]|2[0-9]|3[01])\\..*")
+                || host.endsWith(".local");
     }
 
     public ModelConfig resolveConfig() {

@@ -66,6 +66,31 @@ public class ChatController {
         return chatService.regenerate(UserContext.getUserId(), messageId);
     }
 
+    /** 再生成一版（滑动重生）：旧版本保留，可左右切回来 */
+    @PostMapping(value = "/messages/{id}/swipe", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter swipe(@PathVariable Long id) {
+        return chatService.swipe(UserContext.getUserId(), id);
+    }
+
+    /** 切到第 index 版（从 0 开始），不调模型不扣积分 */
+    @PostMapping("/messages/{id}/swipe/select")
+    public Result<?> selectSwipe(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        int index = body.get("index") == null ? 0 : Integer.parseInt(body.get("index").toString());
+        return Result.ok(chatService.selectSwipe(UserContext.getUserId(), id, index));
+    }
+
+    @PutMapping("/messages/{id}")
+    public Result<?> editMessage(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        String content = body.get("content") == null ? "" : body.get("content").toString();
+        return Result.ok(chatService.editMessage(UserContext.getUserId(), id, content));
+    }
+
+    /** 以这条消息为终点复制出一段新会话 */
+    @PostMapping("/messages/{id}/branch")
+    public Result<?> branch(@PathVariable Long id) {
+        return Result.ok(chatService.branch(UserContext.getUserId(), id));
+    }
+
     @PostMapping("/messages/{id}/collect")
     public Result<?> collect(@PathVariable Long id) {
         chatService.collectMessage(UserContext.getUserId(), id);
@@ -77,5 +102,18 @@ public class ChatController {
                             @RequestParam(defaultValue = "1") int page,
                             @RequestParam(defaultValue = "20") int size) {
         return Result.ok(chatService.search(UserContext.getUserId(), keyword, page, size));
+    }
+
+    @GetMapping("/sessions/{id}/author-note")
+    public Result<?> authorNote(@PathVariable Long id) {
+        return Result.ok(chatService.authorNote(UserContext.getUserId(), id));
+    }
+
+    @PutMapping("/sessions/{id}/author-note")
+    public Result<?> saveAuthorNote(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        String note = body.get("note") == null ? "" : body.get("note").toString();
+        Integer depth = body.get("depth") == null ? null : Integer.valueOf(body.get("depth").toString());
+        Integer frequency = body.get("frequency") == null ? null : Integer.valueOf(body.get("frequency").toString());
+        return Result.ok(chatService.saveAuthorNote(UserContext.getUserId(), id, note, depth, frequency));
     }
 }

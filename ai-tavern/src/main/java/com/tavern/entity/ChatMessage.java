@@ -11,5 +11,9 @@ public class ChatMessage {
     private String role;
     private String content;
     private Integer tokens;
+    /** 这条回复共有几个版本（含当前），=1 时前端不显示左右箭头 */
+    private Integer swipeCount;
+    /** 当前展示的版本序号，从 0 开始 */
+    private Integer swipeIndex;
     private LocalDateTime createdAt;
 }

@@ -17,6 +17,15 @@ export function getMessages(sessionId) {
   return request.get(`/chat/sessions/${sessionId}/messages`)
 }
 
+/** 会话级作者注释：一段插在历史里的强指令 */
+export function getAuthorNote(sessionId) {
+  return request.get(`/chat/sessions/${sessionId}/author-note`)
+}
+
+export function saveAuthorNote(sessionId, data) {
+  return request.put(`/chat/sessions/${sessionId}/author-note`, data)
+}
+
 /**
  * 解析 SSE。成功收到 [DONE] 才 onDone；出错只走 onError，避免失败后再刷新把本地消息清掉。
  */
@@ -144,11 +153,12 @@ function unwrapData(payload) {
   return payload
 }
 
-export async function streamChat(sessionId, data, { onChunk, onDone, onError, signal }) {
+/** 所有流式接口共用的 POST 骨架：拿响应后交给 consumeSse */
+async function postSse(url, body, { onChunk, onDone, onError, signal } = {}) {
   const token = getToken()
   let response
   try {
-    response = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
+    response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -156,7 +166,7 @@ export async function streamChat(sessionId, data, { onChunk, onDone, onError, si
         'Cache-Control': 'no-cache',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ message: data.message || data.content, characterId: data.characterId }),
+      body: JSON.stringify(body || {}),
       signal,
     })
   } catch (err) {
@@ -166,24 +176,33 @@ export async function streamChat(sessionId, data, { onChunk, onDone, onError, si
   await consumeSse(response, { onChunk, onDone, onError })
 }
 
-export async function streamRegenerate(sessionId, messageId, { onChunk, onDone, onError, signal } = {}) {
-  const token = getToken()
-  let response
-  try {
-    response = await fetch(`/api/chat/sessions/${sessionId}/regenerate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ messageId }),
-      signal,
-    })
-  } catch (err) {
-    if (err.name !== 'AbortError') onError?.(err)
-    throw err
-  }
-  await consumeSse(response, { onChunk, onDone, onError })
+export function streamChat(sessionId, data, handlers) {
+  return postSse(
+    `/api/chat/sessions/${sessionId}/messages`,
+    { message: data.message || data.content, characterId: data.characterId },
+    handlers,
+  )
+}
+
+export function streamRegenerate(sessionId, messageId, handlers = {}) {
+  return postSse(`/api/chat/sessions/${sessionId}/regenerate`, { messageId }, handlers)
+}
+
+/** 再生成一版：旧版本保留，前端可以左右切 */
+export function streamSwipe(messageId, handlers = {}) {
+  return postSse(`/api/chat/messages/${messageId}/swipe`, {}, handlers)
+}
+
+/** 切到第 index 版（从 0 开始），不调模型 */
+export function selectSwipe(messageId, index) {
+  return request.post(`/chat/messages/${messageId}/swipe/select`, { index })
+}
+
+export function editMessage(messageId, content) {
+  return request.put(`/chat/messages/${messageId}`, { content })
+}
+
+/** 以这条消息为终点复制出一段新会话 */
+export function branchSession(messageId) {
+  return request.post(`/chat/messages/${messageId}/branch`)
 }

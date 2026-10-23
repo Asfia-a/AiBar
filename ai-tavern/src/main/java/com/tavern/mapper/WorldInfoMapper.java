@@ -15,15 +15,28 @@ import java.util.List;
 @Mapper
 public interface WorldInfoMapper {
 
+    /**
+     * 对话链路用的取数：角色自己的条目 + 全局条目。
+     *
+     * <p>全局条目按 user_id 隔离：引擎内置的（user_id 为空）人人可用，
+     * 某个用户自建的（user_id 有值）只对他自己的对话生效，不会污染别人的上下文。
+     */
     @Select("""
             SELECT * FROM t_world_info_entry
-            WHERE enabled = 1 AND (character_id = #{characterId} OR character_id IS NULL)
+            WHERE enabled = 1
+              AND (character_id = #{characterId}
+                   OR (character_id IS NULL AND (user_id IS NULL OR user_id = #{userId})))
             ORDER BY order_no ASC, id ASC
             """)
-    List<WorldInfoEntry> findActiveForCharacter(@Param("characterId") Long characterId);
+    List<WorldInfoEntry> findActiveForCharacter(@Param("characterId") Long characterId,
+                                                @Param("userId") Long userId);
 
     @Select("SELECT * FROM t_world_info_entry WHERE character_id = #{characterId} ORDER BY order_no ASC, id ASC")
     List<WorldInfoEntry> listByCharacter(@Param("characterId") Long characterId);
+
+    /** 管理页用：不筛 enabled，作者要能看到被自己关掉的条目 */
+    @Select("SELECT * FROM t_world_info_entry WHERE character_id IS NULL AND user_id = #{userId} ORDER BY order_no ASC, id ASC")
+    List<WorldInfoEntry> listGlobalByUser(@Param("userId") Long userId);
 
     @Select("SELECT * FROM t_world_info_entry WHERE id = #{id}")
     WorldInfoEntry findById(@Param("id") Long id);
@@ -47,4 +60,7 @@ public interface WorldInfoMapper {
 
     @Delete("DELETE FROM t_world_info_entry WHERE id=#{id}")
     int delete(@Param("id") Long id);
+
+    @Update("UPDATE t_world_info_entry SET enabled=#{enabled} WHERE id=#{id}")
+    int updateEnabled(@Param("id") Long id, @Param("enabled") int enabled);
 }

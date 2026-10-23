@@ -96,6 +96,10 @@
               <Pencil class="size-4" />
               编辑调整
             </Button>
+            <Button v-if="isOwner" variant="outline" @click="goWorldBook">
+              <BookOpen class="size-4" />
+              世界书
+            </Button>
             <Button v-if="!isOwner" variant="outline" @click="onReplica">
               <Copy class="size-4" />
               复刻
@@ -196,7 +200,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { Bookmark, Copy, MessageSquare, Pencil, Star } from 'lucide-vue-next'
+import { Bookmark, BookOpen, Copy, MessageSquare, Pencil, Star } from 'lucide-vue-next'
 import {
   getCharacterDetail, favoriteCharacter, rateCharacter,
   getComments, addComment, cloneCharacter,
@@ -243,6 +247,10 @@ async function load() {
 
 function goEdit() {
   router.push(`/edit/${route.params.id}`)
+}
+
+function goWorldBook() {
+  router.push(`/character/${route.params.id}/worldbook`)
 }
 
 async function startChat() {

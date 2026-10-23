@@ -14,9 +14,11 @@ public interface CharacterMapper {
 
     @Insert("""
             INSERT INTO t_character(name, avatar, description, personality, background_story, example_dialogue, greeting,
-            creator_id, category_id, status, source_id, version, temperature, top_p, max_tokens)
+            creator_id, category_id, status, source_id, version, temperature, top_p, max_tokens,
+            top_k, frequency_penalty, presence_penalty, repetition_penalty, stop_words)
             VALUES(#{name}, #{avatar}, #{description}, #{personality}, #{backgroundStory}, #{exampleDialogue}, #{greeting},
-            #{creatorId}, #{categoryId}, #{status}, #{sourceId}, #{version}, #{temperature}, #{topP}, #{maxTokens})
+            #{creatorId}, #{categoryId}, #{status}, #{sourceId}, #{version}, #{temperature}, #{topP}, #{maxTokens},
+            #{topK}, #{frequencyPenalty}, #{presencePenalty}, #{repetitionPenalty}, #{stopWords})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CharacterCard card);
@@ -25,6 +27,8 @@ public interface CharacterMapper {
             UPDATE t_character SET name=#{name}, avatar=#{avatar}, description=#{description}, personality=#{personality},
             background_story=#{backgroundStory}, example_dialogue=#{exampleDialogue}, greeting=#{greeting},
             category_id=#{categoryId}, temperature=#{temperature}, top_p=#{topP}, max_tokens=#{maxTokens},
+            top_k=#{topK}, frequency_penalty=#{frequencyPenalty}, presence_penalty=#{presencePenalty},
+            repetition_penalty=#{repetitionPenalty}, stop_words=#{stopWords},
             version=IFNULL(version,1)+1, updated_at=NOW()
             WHERE id=#{id} AND creator_id=#{creatorId}
             """)

@@ -22,6 +22,13 @@ public class CharacterRequest {
     private BigDecimal temperature;
     private BigDecimal topP;
     private Integer maxTokens;
+    /** 以下为可选采样参数，不填（null）就不下发，交给服务端默认 */
+    private Integer topK;
+    private BigDecimal frequencyPenalty;
+    private BigDecimal presencePenalty;
+    private BigDecimal repetitionPenalty;
+    /** 停止词，多个用 | 分隔 */
+    private String stopWords;
     private List<Long> tagIds;
     /** 标签名列表：不存在则自动创建后再绑定 */
     private List<String> tagNames;

@@ -24,6 +24,23 @@ public interface ChatMessageMapper {
     @Delete("DELETE FROM t_chat_message WHERE id=#{id}")
     int deleteById(Long id);
 
+    /** 编辑：只改文本，令牌保持原值（历史计费不追溯） */
+    @Update("UPDATE t_chat_message SET content=#{content} WHERE id=#{id}")
+    int updateContent(@Param("id") Long id, @Param("content") String content);
+
+    /** 切版本 / 生成新版本后同步「当前展示」与计数 */
+    @Update("""
+            UPDATE t_chat_message SET content=#{content}, tokens=#{tokens},
+                   swipe_index=#{swipeIndex}, swipe_count=#{swipeCount}
+            WHERE id=#{id}
+            """)
+    int updateActive(@Param("id") Long id, @Param("content") String content,
+                     @Param("tokens") int tokens, @Param("swipeIndex") int swipeIndex,
+                     @Param("swipeCount") int swipeCount);
+
+    @Select("SELECT COUNT(*) FROM t_chat_message WHERE session_id=#{sessionId} AND id > #{afterId}")
+    int countAfter(@Param("sessionId") Long sessionId, @Param("afterId") Long afterId);
+
     @Select("""
             SELECT m.* FROM t_chat_message m
             INNER JOIN t_chat_session s ON m.session_id=s.id

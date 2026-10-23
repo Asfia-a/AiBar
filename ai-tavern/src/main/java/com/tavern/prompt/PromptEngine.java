@@ -29,8 +29,10 @@ public class PromptEngine {
 
     /** 世界书最多占总输入预算的两成半 */
     private static final double WORLD_INFO_RATIO = 0.25;
-    /** 作者注释占比很小，但保留一个下限，避免被挤没 */
-    private static final int AUTHOR_NOTE_MIN_TOKENS = 120;
+    /** 历史对话至少占输入预算的比例，避免长角色卡把历史挤成 0 条 */
+    private static final double HISTORY_FLOOR_RATIO = 0.3;
+    /** 历史保底的绝对下限（token） */
+    private static final int MIN_HISTORY_TOKENS = 800;
 
     private final PromptTemplateService templates;
     private final WorldInfoService worldInfoService;
@@ -70,31 +72,32 @@ public class PromptEngine {
             }
         }
 
-        // 3. 作者注释：按频率决定这轮插不插
+        // 3. 作者注释：按频率决定这轮插不插；depth=0 表示挂在历史末尾（离模型最近）
         String authorNote = "";
+        Injection authorInjection = null;
         if (isAuthorNoteDue(in)) {
             authorNote = templates.render(templates.get("author_note_format"),
                     Map.of("content", in.authorNote().trim())).trim();
-            if (in.authorNoteDepth() > 0) {
-                inChat.add(new Injection(in.authorNoteDepth(), "system", authorNote));
-            }
+            authorInjection = new Injection(Math.max(in.authorNoteDepth(), 0), "system", authorNote);
         }
 
         int wiChars = beforeChar.stream().mapToInt(String::length).sum()
                 + afterChar.stream().mapToInt(String::length).sum()
                 + inChat.stream().filter(i -> i.content() != null)
                 .mapToInt(i -> i.content().length()).sum();
-        int anChars = inChat.stream()
-                .filter(i -> i.content() != null && i.content().startsWith("【作者注释】"))
-                .mapToInt(i -> i.content().length()).sum();
+        int anChars = authorInjection == null ? 0 : authorNote.length();
 
         // 4. 预算：固定部分（主提示 + 世界书 + 注释）先占，剩下给历史
         int fixedTokens = TokenEstimator.estimate(system)
                 + (beforeChar.isEmpty() && afterChar.isEmpty() && inChat.isEmpty() ? 0 : wiChars / 3)
                 + TokenEstimator.estimate(authorNote);
-        int remaining = Math.max(in.maxInputTokens() - fixedTokens,
-                AUTHOR_NOTE_MIN_TOKENS);
-        int historyBudget = Math.max(remaining - in.maxOutputTokens(), 0);
+
+        // 历史必须保底：角色卡写得很细时，主提示可能吃掉大半预算。
+        // 如果只是「剩下的给历史」，长卡会让历史直接变成 0 条，
+        // 模型看不到对话，就会回出「How can I help you?」这种跳出人设的话。
+        int historyFloor = Math.max(MIN_HISTORY_TOKENS, (int) (in.maxInputTokens() * HISTORY_FLOOR_RATIO));
+        // 注意：maxOutputTokens 是输出预留，不占输入预算，不能在这里相减
+        int historyBudget = Math.max(in.maxInputTokens() - fixedTokens, historyFloor);
 
         List<PromptInput.Turn> kept = trimHistory(in.history(), historyBudget);
 
@@ -106,6 +109,9 @@ public class PromptEngine {
 
         // in-chat 注入：按 depth 从大到小（越靠前）依次插入，保证下标不漂移
         List<Injection> sorted = new ArrayList<>(inChat);
+        if (authorInjection != null) {
+            sorted.add(authorInjection);
+        }
         sorted.sort(Comparator.comparingInt(Injection::depth).reversed());
         List<PromptInput.Turn> tail = new ArrayList<>(kept);
         for (Injection inj : sorted) {

@@ -51,6 +51,9 @@ ai:
     base-url: ${AI_BASE_URL:https://claudex.org/v1}
     model-name: ${AI_MODEL_NAME:deepseek-v4-flash}
     context-window-size: 20
+    # top_k / repetition_penalty 不是 OpenAI 标准参数，云端网关会直接 400。
+    # auto=只有 base-url 指向本机/局域网（Ollama、vLLM 等）才下发；always=总是；never=从不
+    extended-params: auto
   image:
     api-key: ${AI_IMAGE_API_KEY:}
     base-url: ${AI_IMAGE_BASE_URL:https://claudex.org/v1}

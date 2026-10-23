@@ -175,6 +175,11 @@ public class CharacterService {
         copy.setTemperature(src.getTemperature());
         copy.setTopP(src.getTopP());
         copy.setMaxTokens(src.getMaxTokens());
+        copy.setTopK(src.getTopK());
+        copy.setFrequencyPenalty(src.getFrequencyPenalty());
+        copy.setPresencePenalty(src.getPresencePenalty());
+        copy.setRepetitionPenalty(src.getRepetitionPenalty());
+        copy.setStopWords(src.getStopWords());
         characterMapper.insert(copy);
         List<Tag> tags = tagMapper.findByCharacterId(id);
         for (Tag t : tags) {
@@ -372,7 +377,59 @@ public class CharacterService {
         card.setTemperature(req.getTemperature());
         card.setTopP(req.getTopP());
         card.setMaxTokens(req.getMaxTokens());
+        card.setTopK(normalizeTopK(req.getTopK()));
+        card.setFrequencyPenalty(normalizePenalty(req.getFrequencyPenalty(), -2, 2));
+        card.setPresencePenalty(normalizePenalty(req.getPresencePenalty(), -2, 2));
+        card.setRepetitionPenalty(normalizeRepetition(req.getRepetitionPenalty()));
+        card.setStopWords(normalizeStopWords(req.getStopWords()));
         return card;
+    }
+
+    /*
+     * 采样参数的入库口径：null 表示「不显式下发，交给服务端默认」。
+     * 前端把「关闭」也表达成 0 / 1（滑块没有 null），所以这里统一收敛：
+     *  - top_k <= 0  → null
+     *  - 惩罚类越界 → 夹到合法区间；恰好是中性值 → null，避免往请求里塞无用字段
+     *  - 停止词超长 → 截断，避免撑爆 varchar(255)
+     */
+    private static Integer normalizeTopK(Integer topK) {
+        if (topK == null || topK <= 0) {
+            return null;
+        }
+        return Math.min(topK, 200);
+    }
+
+    private static BigDecimal normalizePenalty(BigDecimal value, double min, double max) {
+        if (value == null) {
+            return null;
+        }
+        BigDecimal v = value.max(BigDecimal.valueOf(min)).min(BigDecimal.valueOf(max));
+        return v.compareTo(BigDecimal.ZERO) == 0 ? null : v;
+    }
+
+    private static BigDecimal normalizeRepetition(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        BigDecimal v = value.max(new BigDecimal("0.50")).min(new BigDecimal("2.00"));
+        return v.compareTo(BigDecimal.ONE) == 0 ? null : v;
+    }
+
+    private static String normalizeStopWords(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String text = raw.replaceAll("\\s*\\|\\s*", "|").replaceAll("\\|+", "|").trim();
+        if (text.startsWith("|")) {
+            text = text.substring(1);
+        }
+        if (text.endsWith("|")) {
+            text = text.substring(0, text.length() - 1);
+        }
+        if (text.isBlank()) {
+            return null;
+        }
+        return text.length() > 255 ? text.substring(0, 255) : text;
     }
 
     public Object categories() {

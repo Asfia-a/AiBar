@@ -341,6 +341,129 @@
               <span>4096</span>
             </div>
           </div>
+
+          <!-- 高级采样：默认收起，避免第一屏塞满不常用的旋钮 -->
+          <div class="sm:col-span-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-4">
+              <label class="flex cursor-pointer items-center gap-2">
+                <Switch v-model="showAdvanced" />
+                <span class="text-sm">高级采样（top_k / 惩罚 / 停止词）</span>
+              </label>
+              <button
+                type="button"
+                class="text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                @click="resetAdvanced"
+              >
+                恢复默认
+              </button>
+            </div>
+
+            <div v-if="showAdvanced" class="mt-4 space-y-5">
+              <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                <div class="space-y-3">
+                  <div class="flex items-baseline justify-between gap-2">
+                    <Label for="top-k">top_k</Label>
+                    <span class="text-sm tabular-nums">
+                      {{ Number(form.topK) > 0 ? form.topK : '关闭' }}
+                    </span>
+                  </div>
+                  <input
+                    id="top-k"
+                    v-model.number="form.topK"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    class="param-range w-full"
+                  />
+                  <div class="flex justify-between text-[11px] text-muted-foreground">
+                    <span>0 关闭</span>
+                    <span>100</span>
+                  </div>
+                </div>
+
+                <div class="space-y-3">
+                  <div class="flex items-baseline justify-between gap-2">
+                    <Label for="freq-penalty">频率惩罚</Label>
+                    <span class="text-sm tabular-nums">{{ fmtPenalty(form.frequencyPenalty) }}</span>
+                  </div>
+                  <input
+                    id="freq-penalty"
+                    v-model.number="form.frequencyPenalty"
+                    type="range"
+                    min="-2"
+                    max="2"
+                    step="0.1"
+                    class="param-range w-full"
+                  />
+                  <div class="flex justify-between text-[11px] text-muted-foreground">
+                    <span>少复读</span>
+                    <span>放开</span>
+                  </div>
+                </div>
+
+                <div class="space-y-3">
+                  <div class="flex items-baseline justify-between gap-2">
+                    <Label for="pres-penalty">存在惩罚</Label>
+                    <span class="text-sm tabular-nums">{{ fmtPenalty(form.presencePenalty) }}</span>
+                  </div>
+                  <input
+                    id="pres-penalty"
+                    v-model.number="form.presencePenalty"
+                    type="range"
+                    min="-2"
+                    max="2"
+                    step="0.1"
+                    class="param-range w-full"
+                  />
+                  <div class="flex justify-between text-[11px] text-muted-foreground">
+                    <span>换话题</span>
+                    <span>守旧</span>
+                  </div>
+                </div>
+
+                <div class="space-y-3">
+                  <div class="flex items-baseline justify-between gap-2">
+                    <Label for="rep-penalty">重复惩罚</Label>
+                    <span class="text-sm tabular-nums">
+                      {{ fmtPenalty(form.repetitionPenalty, 2) }}
+                    </span>
+                  </div>
+                  <input
+                    id="rep-penalty"
+                    v-model.number="form.repetitionPenalty"
+                    type="range"
+                    min="0.8"
+                    max="1.5"
+                    step="0.05"
+                    class="param-range w-full"
+                  />
+                  <div class="flex justify-between text-[11px] text-muted-foreground">
+                    <span>强惩罚</span>
+                    <span>1.00 关闭</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <Label for="stop-words" class="text-xs text-muted-foreground">
+                  停止词
+                  <span class="opacity-70">多个用 | 分隔，最多 4 条</span>
+                </Label>
+                <Input
+                  id="stop-words"
+                  v-model="form.stopWords"
+                  placeholder="例如：\n用户:|\nUser:"
+                  class="h-9 font-mono text-[13px]"
+                />
+                <p class="text-[11px] leading-relaxed text-muted-foreground">
+                  命中即停止生成，用来卡住「模型自问自答」；换行写 <code class="text-foreground">\n</code>。
+                  其中 top_k 与重复惩罚不是 OpenAI 标准参数，只有 base_url 指向本机 / 局域网的自建推理服务
+                  （Ollama、vLLM 等）才会真正下发，云端网关会自动跳过。
+                </p>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -401,6 +524,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
 const route = useRoute()
@@ -417,6 +541,8 @@ const pendingAvatarFile = ref(null)
 const customTag = ref('')
 const importInput = ref(null)
 const avatarInput = ref(null)
+/** 高级采样默认收起：不常用，但排查「复读 / 抢话」时是第一批要调的旋钮 */
+const showAdvanced = ref(false)
 
 const form = reactive({
   name: '',
@@ -433,6 +559,12 @@ const form = reactive({
   temperature: 0.7,
   topP: 0.9,
   maxTokens: 500,
+  // 0 / 0 / 0 / 1 表示「不显式下发」，交给服务端默认
+  topK: 0,
+  frequencyPenalty: 0,
+  presencePenalty: 0,
+  repetitionPenalty: 1,
+  stopWords: '',
 })
 
 const avatarPreview = computed(() => importPreview.value || form.avatar || '')
@@ -474,6 +606,21 @@ const selectedTagChips = computed(() => {
 
 function formatNum(n) {
   return Number(n || 0).toLocaleString()
+}
+
+/** 惩罚类参数显示：0 显示成「关闭」，避免用户以为 0 是个有效惩罚值 */
+function fmtPenalty(v, digits = 1) {
+  const n = Number(v)
+  if (!Number.isFinite(n) || (digits === 1 ? n === 0 : n === 1)) return '关闭'
+  return n.toFixed(digits)
+}
+
+function resetAdvanced() {
+  form.topK = 0
+  form.frequencyPenalty = 0
+  form.presencePenalty = 0
+  form.repetitionPenalty = 1
+  form.stopWords = ''
 }
 
 function isTagSelected(tag) {
@@ -583,6 +730,12 @@ function buildSavePayload() {
     tagNames,
     categoryId: form.categoryId || matchCategoryId(form.categoryName) || null,
     categoryName: form.categoryName || undefined,
+    // 中性值发 null：后端据此判断「不下发这个参数」，老卡的行为才不会被改写
+    topK: Number(form.topK) > 0 ? Number(form.topK) : null,
+    frequencyPenalty: Number(form.frequencyPenalty) || null,
+    presencePenalty: Number(form.presencePenalty) || null,
+    repetitionPenalty: Number(form.repetitionPenalty) === 1 ? null : Number(form.repetitionPenalty),
+    stopWords: form.stopWords?.trim() || null,
   }
 }
 
@@ -758,7 +911,15 @@ onMounted(async () => {
         temperature: Number(c.temperature ?? 0.7),
         topP: Number(c.topP ?? 0.9),
         maxTokens: c.maxTokens || 500,
+        topK: c.topK ?? 0,
+        frequencyPenalty: Number(c.frequencyPenalty ?? 0),
+        presencePenalty: Number(c.presencePenalty ?? 0),
+        repetitionPenalty: Number(c.repetitionPenalty ?? 1),
+        stopWords: c.stopWords || '',
       })
+      // 已经配过高级参数的卡，进来就展开，不然用户会以为没保存
+      showAdvanced.value = Boolean(c.topK || c.frequencyPenalty || c.presencePenalty
+        || (c.repetitionPenalty && Number(c.repetitionPenalty) !== 1) || c.stopWords)
     } else if (route.query.from === 'world-tree') {
       try {
         const spawn = JSON.parse(sessionStorage.getItem('tavern_world_spawn') || 'null')

@@ -100,7 +100,7 @@ public class NarrativeService {
 
         StringBuilder full = new StringBuilder();
         AiModelService.StreamResult result = aiModelService.streamChat(
-                bundle.messages(), 0.85, 0.92, 3000, delta -> {
+                bundle.messages(), AiModelService.ChatParams.simple(0.85, 0.92, 3000), delta -> {
                     if (delta == null || delta.isEmpty()) {
                         return;
                     }
