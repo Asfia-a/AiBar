@@ -5,11 +5,14 @@
       <div
         class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,var(--color-secondary),transparent_60%)]"
       />
+      <!-- 缓慢漂浮的光斑，让静态的登录页有点呼吸 -->
+      <div class="orb -left-24 top-1/4 size-80 bg-[radial-gradient(circle_at_center,rgba(228,196,137,0.20),transparent_65%)]" />
+      <div class="orb -right-16 bottom-10 size-72 bg-[radial-gradient(circle_at_center,rgba(120,110,255,0.16),transparent_65%)] [animation-delay:-6s]" />
       <div
         class="absolute inset-0 opacity-[0.04] [background-image:linear-gradient(to_right,currentColor_1px,transparent_1px),linear-gradient(to_bottom,currentColor_1px,transparent_1px)] [background-size:56px_56px]"
       />
       <div class="relative flex h-full flex-col justify-between p-12">
-        <div class="flex items-center gap-2">
+        <div v-reveal class="flex items-center gap-2">
           <span class="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
             <Sparkles class="size-4" />
           </span>

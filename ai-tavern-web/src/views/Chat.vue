@@ -136,7 +136,10 @@
             v-for="m in messages"
             :key="m.id || m._tmp"
             class="group flex gap-3"
-            :class="m.role === 'user' ? 'flex-row-reverse' : ''"
+            :class="[
+              m.role === 'user' ? 'flex-row-reverse' : '',
+              m._streaming ? '' : m.role === 'user' ? 'msg-in-user' : 'msg-in-ai',
+            ]"
           >
             <!-- 多选模式下的勾选框 -->
             <button
@@ -181,7 +184,7 @@
                 <span v-if="m.role === 'user'">{{ m.content }}</span>
                 <!-- 模型输出带 markdown，解析后渲染；原始 HTML 已在 renderMarkdown 中丢弃 -->
                 <div v-else class="chat-md" v-html="renderMarkdown(m.content)" />
-                <span v-if="m._streaming" class="ml-0.5 inline-block animate-pulse">▍</span>
+                <span v-if="m._streaming" class="stream-caret">▍</span>
               </div>
 
               <!-- 悬停时出现的消息操作 -->
@@ -289,7 +292,7 @@
             </p>
           </div>
 
-          <div class="rounded-2xl border border-border/80 bg-card p-2 focus-within:border-ring/60">
+          <div class="rounded-2xl border border-border/80 bg-card p-2 transition-shadow focus-within:border-ring/60 focus-within:shadow-[0_0_0_4px_rgba(228,196,137,0.10)]">
             <textarea
               ref="inputRef"
               v-model="input"
@@ -316,7 +319,7 @@
               <Button
                 v-else
                 size="icon-sm"
-                class="rounded-full"
+                class="rounded-full transition-transform hover:scale-105 active:scale-95"
                 :disabled="!input.trim()"
                 title="发送"
                 @click="send"

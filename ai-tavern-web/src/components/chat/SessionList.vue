@@ -4,11 +4,11 @@
       v-for="s in sessions"
       :key="s.id"
       type="button"
-      class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors"
+      class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all duration-300"
       :class="
         String(s.id) === String(currentId)
           ? 'bg-secondary text-foreground'
-          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+          : 'text-muted-foreground hover:translate-x-0.5 hover:bg-accent/60 hover:text-foreground'
       "
       @click="emit('select', s.id)"
     >

@@ -264,3 +264,198 @@ select:-webkit-autofill {
   transition: background-color 9999s ease-in-out 0s;
 }
 
+/* ============================================================
+ * 动效层
+ * 统一用同一条缓动曲线 cubic-bezier(.16, 1, .3, 1)（快出慢停），
+ * 让整个站点的手感一致。
+ * ============================================================ */
+
+@layer base {
+  :root {
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--ring) 45%, transparent);
+    color: var(--foreground);
+  }
+}
+
+/* 滚动进场：JS 只负责加 .is-visible，位移交给 CSS */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.8s var(--ease-out-expo),
+    transform 0.8s var(--ease-out-expo);
+  will-change: opacity, transform;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* 3D 倾斜卡片：光斑跟着鼠标走 */
+.tilt {
+  position: relative;
+  transform-style: preserve-3d;
+  transition:
+    transform 0.35s var(--ease-out-expo),
+    box-shadow 0.35s ease,
+    border-color 0.35s ease;
+}
+
+.tilt::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  background: radial-gradient(
+    340px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in oklab, var(--ring) 18%, transparent),
+    transparent 62%
+  );
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+
+.tilt:hover::after {
+  opacity: 1;
+}
+
+/* 悬停时一道斜向高光扫过卡片，像灯光掠过 */
+.shine::before {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  z-index: 3;
+  background: linear-gradient(
+    115deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.1) 48%,
+    rgba(255, 255, 255, 0.02) 52%,
+    transparent 62%
+  );
+  transform: translateX(-70%);
+  transition: transform 0.9s var(--ease-out-expo);
+  pointer-events: none;
+}
+
+.shine:hover::before {
+  transform: translateX(70%);
+}
+
+/* 路由转场：轻微上浮淡入，不做位移过大的横滑 */
+.page-enter-active,
+.page-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s var(--ease-out-expo);
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+/* 消息入场：从对话方向轻轻推入 */
+@keyframes msg-in-user {
+  from {
+    opacity: 0;
+    transform: translate3d(10px, 8px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes msg-in-ai {
+  from {
+    opacity: 0;
+    transform: translate3d(-10px, 8px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.msg-in-user {
+  animation: msg-in-user 0.45s var(--ease-out-expo) both;
+}
+
+.msg-in-ai {
+  animation: msg-in-ai 0.45s var(--ease-out-expo) both;
+}
+
+/* 流式光标：金色呼吸，比默认的闪烁更像在写字 */
+@keyframes caret-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.stream-caret {
+  display: inline-block;
+  width: 0.5em;
+  margin-left: 1px;
+  color: var(--ring);
+  animation: caret-breathe 1.05s ease-in-out infinite;
+}
+
+/* 背景光斑漂浮 */
+@keyframes float-orb {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -18px, 0) scale(1.06);
+  }
+}
+
+.orb {
+  position: absolute;
+  border-radius: 999px;
+  /* 不用 blur()：父级 overflow-hidden 时模糊层会被裁出硬边，径向渐变本身已经足够柔 */
+  pointer-events: none;
+  animation: float-orb 12s ease-in-out infinite;
+}
+
+/* 骨架屏微光 */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .tilt,
+  .msg-in-user,
+  .msg-in-ai,
+  .orb,
+  .stream-caret,
+  .page-enter-active,
+  .page-leave-active {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
+
+

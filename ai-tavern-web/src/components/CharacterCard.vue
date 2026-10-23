@@ -1,14 +1,15 @@
 <template>
   <router-link
+    v-tilt="7"
     :to="`/character/${character.id}`"
-    class="group block overflow-hidden rounded-xl border border-border/60 bg-card transition-all hover:border-border hover:shadow-lg hover:shadow-black/20"
+    class="group shine block overflow-hidden rounded-xl border border-border/60 bg-card transition-all hover:border-ring/40 hover:shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]"
   >
     <div class="relative aspect-[3/4] overflow-hidden bg-muted">
       <img
         v-if="character.avatar"
         :src="character.avatar"
         :alt="character.name"
-        class="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+        class="size-full object-cover transition-transform duration-500 ease-[cubic-bezier(.16,1,.3,1)] group-hover:scale-[1.06]"
         loading="lazy"
       />
       <div v-else class="grid size-full place-items-center text-4xl text-muted-foreground">

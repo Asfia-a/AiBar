@@ -5,6 +5,13 @@
       <header
         class="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl"
       >
+        <!-- 阅读进度：细金线随滚动伸长，长页面时给一点方向感 -->
+        <div class="absolute inset-x-0 top-0 h-px overflow-hidden">
+          <div
+            class="h-px origin-left bg-gradient-to-r from-transparent via-ring to-ring/0 transition-transform duration-150 ease-out"
+            :style="{ transform: `scaleX(${scrollProgress})` }"
+          />
+        </div>
         <div class="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-4 sm:px-6">
           <!-- 品牌 -->
           <router-link to="/" class="flex shrink-0 items-center gap-2">
@@ -179,7 +186,12 @@
         class="w-full flex-1"
         :class="isFullBleed ? 'min-h-0' : 'mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8'"
       >
-        <router-view />
+        <!-- 路由切换时轻微淡入上浮，避免整页硬切 -->
+        <router-view v-slot="{ Component }">
+          <Transition name="page" mode="out-in">
+            <component :is="Component" :key="route.path" />
+          </Transition>
+        </router-view>
       </main>
 
       <footer v-if="!isFullBleed" class="border-t border-border/60 py-6">
@@ -192,7 +204,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Bell,
@@ -239,6 +251,23 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const mobileOpen = ref(false)
+
+/** 阅读进度（0~1）：页面滚到哪，顶部那条金线就伸到哪 */
+const scrollProgress = ref(0)
+let ticking = false
+
+function updateProgress() {
+  const el = document.documentElement
+  const max = el.scrollHeight - el.clientHeight
+  scrollProgress.value = max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0
+  ticking = false
+}
+
+function onWindowScroll() {
+  if (ticking) return
+  ticking = true
+  requestAnimationFrame(updateProgress)
+}
 
 const primaryNav = [
   { to: '/', label: '角色广场', name: 'Home' },
@@ -300,5 +329,13 @@ onMounted(() => {
   if (authStore.isLoggedIn && !authStore.user) {
     authStore.fetchUser()
   }
+  updateProgress()
+  window.addEventListener('scroll', onWindowScroll, { passive: true })
+  window.addEventListener('resize', onWindowScroll, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onWindowScroll)
+  window.removeEventListener('resize', onWindowScroll)
 })
 </script>

@@ -1,41 +1,60 @@
 <template>
   <div class="space-y-8">
     <!-- 顶部：搜索 -->
-    <section class="flex flex-col items-center py-8 text-center sm:py-12">
-      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">
-        挑一个角色，开始今晚的故事
-      </h1>
-      <p class="mt-3 max-w-xl text-sm text-muted-foreground">
-        流式对话、角色卡创作、叙事改写与社区发布——从一句开场白开始。
-      </p>
+    <section
+      class="relative flex flex-col items-center overflow-hidden py-14 text-center sm:py-20"
+      @pointermove="onHeroMove"
+      @pointerleave="onHeroLeave"
+    >
+      <!-- 背景光斑：缓慢漂浮 + 跟随鼠标做轻微视差，给静止的英雄区一点呼吸感 -->
+      <div
+        class="pointer-events-none absolute inset-0 transition-transform duration-300 ease-out"
+        :style="{ transform: `translate3d(${parallax.x * 16}px, ${parallax.y * 12}px, 0)` }"
+      >
+        <div class="orb -left-20 top-0 size-72 bg-[radial-gradient(circle_at_center,rgba(228,196,137,0.22),transparent_65%)]" />
+        <div class="orb -right-10 top-8 size-64 bg-[radial-gradient(circle_at_center,rgba(120,110,255,0.18),transparent_65%)] [animation-delay:-5s]" />
+      </div>
 
-      <form class="mt-6 flex w-full max-w-md items-center gap-2" @submit.prevent="goSearch">
-        <div class="relative flex-1">
-          <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            v-model="keyword"
-            placeholder="搜索角色名或简介"
-            class="h-10 rounded-full pl-9"
-          />
+      <div v-reveal class="relative z-10 flex w-full flex-col items-center">
+        <p class="text-[11px] uppercase tracking-[0.32em] text-muted-foreground">AI Character Tavern</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight sm:text-5xl">
+          挑一个角色，
+          <span class="bg-gradient-to-r from-[#f6e7cc] via-[#e4c489] to-[#c9a86a] bg-clip-text text-transparent">
+            开始今晚的故事
+          </span>
+        </h1>
+        <p class="mt-4 max-w-xl text-sm text-muted-foreground">
+          流式对话、角色卡创作、叙事改写与社区发布——从一句开场白开始。
+        </p>
+
+        <form class="mt-7 flex w-full max-w-md items-center gap-2" @submit.prevent="goSearch">
+          <div class="group relative flex-1">
+            <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-foreground" />
+            <Input
+              v-model="keyword"
+              placeholder="搜索角色名或简介"
+              class="h-11 rounded-full border-border/70 bg-card/60 pl-9 backdrop-blur transition-shadow focus-visible:shadow-[0_0_0_4px_rgba(228,196,137,0.12)]"
+            />
+          </div>
+          <Button type="submit" class="h-11 rounded-full px-6 transition-transform active:scale-95">搜索</Button>
+        </form>
+
+        <div v-if="tags.length" class="mt-5 flex flex-wrap justify-center gap-1.5">
+          <button
+            v-for="tag in tags.slice(0, 8)"
+            :key="tag.id || tag.name || tag"
+            type="button"
+            class="rounded-full border border-border/70 px-2.5 py-1 text-xs text-muted-foreground transition-all duration-300 hover:-translate-y-0.5 hover:border-ring/40 hover:text-foreground"
+            @click="openTag(tag)"
+          >
+            #{{ tag.name ?? tag }}
+          </button>
         </div>
-        <Button type="submit" class="h-10 rounded-full px-5">搜索</Button>
-      </form>
-
-      <div v-if="tags.length" class="mt-4 flex flex-wrap justify-center gap-1.5">
-        <button
-          v-for="tag in tags.slice(0, 8)"
-          :key="tag.id || tag.name || tag"
-          type="button"
-          class="rounded-full border border-border/70 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
-          @click="openTag(tag)"
-        >
-          #{{ tag.name ?? tag }}
-        </button>
       </div>
     </section>
 
     <!-- 热门角色 -->
-    <section class="space-y-4">
+    <section v-reveal class="space-y-4">
       <div class="flex items-end justify-between">
         <div>
           <h2 class="text-lg font-medium">热门角色</h2>
@@ -60,7 +79,7 @@
 
     <!-- 主体：分类 + 列表 / 侧栏：排行 + 标签 -->
     <div class="grid grid-cols-1 gap-8 xl:grid-cols-[1fr_280px]">
-      <section class="space-y-4">
+      <section v-reveal="80" class="space-y-4">
         <div class="flex flex-wrap gap-1.5">
           <Button
             v-for="cat in categories"
@@ -89,7 +108,7 @@
         </div>
       </section>
 
-      <aside class="space-y-8">
+      <aside v-reveal="160" class="space-y-8">
         <section class="space-y-3">
           <h2 class="text-sm font-medium">排行榜</h2>
           <div v-if="loadingRank" class="space-y-2">
@@ -141,7 +160,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search } from 'lucide-vue-next'
 import CharacterCard from '../components/CharacterCard.vue'
@@ -154,6 +173,21 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 const router = useRouter()
 const keyword = ref('')
+
+/** 鼠标在英雄区移动时，两层光斑做相反方向的视差位移 */
+const parallax = reactive({ x: 0, y: 0 })
+
+function onHeroMove(ev) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  const rect = ev.currentTarget.getBoundingClientRect()
+  parallax.x = ((ev.clientX - rect.left) / rect.width - 0.5) * 2
+  parallax.y = ((ev.clientY - rect.top) / rect.height - 0.5) * 2
+}
+
+function onHeroLeave() {
+  parallax.x = 0
+  parallax.y = 0
+}
 const hotList = ref([])
 const characterList = ref([])
 const rankingList = ref([])
