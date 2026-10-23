@@ -33,13 +33,17 @@
           <PanelLeft class="size-4" />
         </Button>
 
-        <Avatar class="size-8 shrink-0">
+        <!--
+          桌面端左侧会话列表已经显示了这个角色的头像和名字，这里再摆一遍就是重复；
+          只在侧边栏收起的移动端显示头像与标题。
+        -->
+        <Avatar class="size-8 shrink-0 md:hidden">
           <AvatarImage :src="bgUrl" :alt="characterName" />
           <AvatarFallback class="text-xs">{{ characterName[0] }}</AvatarFallback>
         </Avatar>
 
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium">{{ characterName }}</p>
+          <p class="truncate text-sm font-medium md:hidden">{{ characterName }}</p>
           <p class="truncate text-xs text-muted-foreground">
             积分 <span class="text-foreground">{{ formatNum(pointsBalance) }}</span>
             · 约 {{ tokensPerPoint }} Token / 积分
