@@ -22,8 +22,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -72,39 +74,129 @@ public class AiModelService {
     @Value("${ai.model.extended-params:auto}")
     private String extendedParams;
 
-    public record StreamResult(String content, int totalTokens) {}
+    /**
+     * 聊天页可选模型（claudex.org 网关当前开放的一批）。
+     * id 必须与网关 /chat/completions 的 model 字段一致；label 给前端展示。
+     */
+    public static final List<Map<String, String>> CHAT_MODELS = List.of(
+            Map.of("id", "deepseek-v4.1-flash", "label", "DeepSeek V4.1 Flash",
+                    "description", "默认推荐，更快更省"),
+            Map.of("id", "deepseek-v4-flash", "label", "DeepSeek V4 Flash",
+                    "description", "上一代 Flash"),
+            Map.of("id", "deepseek-v4-pro", "label", "DeepSeek V4 Pro",
+                    "description", "更强能力，适合复杂剧情"),
+            Map.of("id", "deepseek-v3.2", "label", "DeepSeek V3.2",
+                    "description", "经典 DeepSeek"),
+            Map.of("id", "gemini-3-flash", "label", "Gemini 3 Flash",
+                    "description", "Google，速度快"),
+            Map.of("id", "gemini-3.8-flash", "label", "Gemini 3.8 Flash",
+                    "description", "Google 新版 Flash"),
+            Map.of("id", "gemini-4-argon", "label", "Gemini 4 Argon",
+                    "description", "Google 更强一档"),
+            Map.of("id", "claude-opus-4-6", "label", "Claude Opus 4.6",
+                    "description", "Anthropic，文笔细"),
+            Map.of("id", "glm-5.3", "label", "GLM 5.3",
+                    "description", "智谱"),
+            Map.of("id", "glm-5.3-flash", "label", "GLM 5.3 Flash",
+                    "description", "智谱快速版"),
+            Map.of("id", "kimi-k3", "label", "Kimi K3",
+                    "description", "月之暗面")
+    );
+
+    private static final Set<String> CHAT_MODEL_IDS = CHAT_MODELS.stream()
+            .map(m -> m.get("id"))
+            .collect(Collectors.toUnmodifiableSet());
+
+    public record StreamResult(String content, String reasoning, int totalTokens) {
+        public StreamResult(String content, int totalTokens) {
+            this(content, null, totalTokens);
+        }
+    }
 
     public record ImageResult(String url, String b64Json) {}
+
+    /** 流式片段：正文与思考链分开推，前端各自渲染 */
+    public record StreamChunk(Kind kind, String text) {
+        public enum Kind { CONTENT, REASONING }
+        public static StreamChunk content(String text) {
+            return new StreamChunk(Kind.CONTENT, text);
+        }
+        public static StreamChunk reasoning(String text) {
+            return new StreamChunk(Kind.REASONING, text);
+        }
+    }
 
     /**
      * 一次对话请求的采样参数。
      *
      * <p>哪些字段可空，就表示「这个开关没开」：不下发，交给服务端默认值。
      * 这样老角色卡（只有 temperature/top_p/max_tokens）的行为完全不变。
+     *
+     * <p>{@code thinkingEnabled}：DeepSeek 思考模式；null=不传（走服务端默认），
+     * true/false 显式下发 {@code thinking.type=enabled/disabled}。
      */
     public record ChatParams(double temperature, double topP, int maxTokens,
                              Integer topK, Double frequencyPenalty, Double presencePenalty,
-                             Double repetitionPenalty, List<String> stop) {
+                             Double repetitionPenalty, List<String> stop,
+                             Boolean thinkingEnabled) {
         public ChatParams {
             stop = stop == null ? List.of() : List.copyOf(stop);
         }
 
+        public ChatParams(double temperature, double topP, int maxTokens,
+                          Integer topK, Double frequencyPenalty, Double presencePenalty,
+                          Double repetitionPenalty, List<String> stop) {
+            this(temperature, topP, maxTokens, topK, frequencyPenalty, presencePenalty,
+                    repetitionPenalty, stop, null);
+        }
+
         /** 工坊、叙事等内部调用：只用三家都认的三个参数 */
         public static ChatParams simple(double temperature, double topP, int maxTokens) {
-            return new ChatParams(temperature, topP, maxTokens, null, null, null, null, List.of());
+            return new ChatParams(temperature, topP, maxTokens, null, null, null, null, List.of(), null);
         }
+
+        public ChatParams withThinking(Boolean enabled) {
+            return new ChatParams(temperature, topP, maxTokens, topK, frequencyPenalty,
+                    presencePenalty, repetitionPenalty, stop, enabled);
+        }
+    }
+
+    /** 聊天页可选模型列表（不含任何密钥） */
+    public List<Map<String, String>> listChatModels() {
+        return CHAT_MODELS;
+    }
+
+    public String defaultChatModel() {
+        return normalizeModelName(defaultModelName);
+    }
+
+    /** 只接受白名单模型；非法值回落默认 */
+    public String normalizeModelName(String raw) {
+        if (StringUtils.hasText(raw) && CHAT_MODEL_IDS.contains(raw.trim())) {
+            return raw.trim();
+        }
+        if (StringUtils.hasText(defaultModelName) && CHAT_MODEL_IDS.contains(defaultModelName.trim())) {
+            return defaultModelName.trim();
+        }
+        return CHAT_MODELS.get(0).get("id");
     }
 
     /** 非流式对话，供工坊生成角色卡等 */
     public String chatCompletion(List<Map<String, String>> messages, double temperature, int maxTokens) {
-        ModelConfig cfg = resolveConfig();
-        String apiKey = StringUtils.hasText(cfg.getApiKey()) ? cfg.getApiKey() : defaultApiKey;
+        return chatCompletion(messages, temperature, maxTokens, null);
+    }
+
+    /** @param modelOverride 可选；空则用配置默认模型 */
+    public String chatCompletion(List<Map<String, String>> messages, double temperature, int maxTokens,
+                                 String modelOverride) {
+        ModelConfig cfg = resolveConfig(modelOverride);
+        String apiKey = cfg.getApiKey();
         if (!StringUtils.hasText(apiKey)) {
             throw new BusinessException(ErrorCode.AI_ERROR.getCode(), "未配置对话 API Key");
         }
         try {
             Map<String, Object> body = new java.util.LinkedHashMap<>();
-            body.put("model", cfg.getModelName() != null ? cfg.getModelName() : defaultModelName);
+            body.put("model", cfg.getModelName());
             body.put("messages", messages);
             body.put("temperature", temperature);
             body.put("max_tokens", maxTokens);
@@ -209,15 +301,23 @@ public class AiModelService {
     }
 
     public StreamResult streamChat(List<Map<String, String>> messages, ChatParams params,
-                                   Consumer<String> onDelta) {
-        ModelConfig cfg = resolveConfig();
-        String apiKey = StringUtils.hasText(cfg.getApiKey()) ? cfg.getApiKey() : defaultApiKey;
+                                   Consumer<StreamChunk> onChunk) {
+        return streamChat(messages, params, null, onChunk);
+    }
+
+    /**
+     * @param modelOverride 会话选定的模型；空则用配置默认值。API Key / Base URL 始终来自配置文件。
+     */
+    public StreamResult streamChat(List<Map<String, String>> messages, ChatParams params,
+                                   String modelOverride, Consumer<StreamChunk> onChunk) {
+        ModelConfig cfg = resolveConfig(modelOverride);
+        String apiKey = cfg.getApiKey();
         if (!StringUtils.hasText(apiKey)) {
             // 无 Key 时返回模拟流，便于本地联调
             String mock = "（演示模式）你好，我是酒馆里的角色。请配置 AI_API_KEY 以启用真实对话。";
             for (String part : mock.split("(?<=。)")) {
                 if (!part.isBlank()) {
-                    onDelta.accept(part);
+                    onChunk.accept(StreamChunk.content(part));
                     try { Thread.sleep(40); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
                 }
             }
@@ -225,7 +325,7 @@ public class AiModelService {
         }
 
         try {
-            Map<String, Object> body = buildRequestBody(cfg, messages, defaultModelName, params,
+            Map<String, Object> body = buildRequestBody(cfg, messages, defaultChatModel(), params,
                     true, allowExtendedParams(cfg));
             String json = objectMapper.writeValueAsString(body);
             String url = chatCompletionsUrl(cfg.getBaseUrl());
@@ -237,6 +337,7 @@ public class AiModelService {
                     .build();
 
             StringBuilder full = new StringBuilder();
+            StringBuilder reasoning = new StringBuilder();
             int totalTokens = 0;
             try (Response response = client.newCall(request).execute()) {
                 if (!response.isSuccessful() || response.body() == null) {
@@ -256,25 +357,55 @@ public class AiModelService {
                         }
                         JsonNode choices = node.get("choices");
                         if (choices != null && choices.isArray() && !choices.isEmpty()) {
-                            JsonNode delta = choices.get(0).get("delta");
-                            if (delta != null && delta.has("content") && !delta.get("content").isNull()) {
-                                String content = delta.get("content").asText();
-                                full.append(content);
-                                onDelta.accept(content);
-                            }
+                            applyDelta(choices.get(0).get("delta"), full, reasoning, onChunk);
                         }
                     }
                 }
             }
             if (totalTokens <= 0) {
-                totalTokens = Math.max(20, full.length() / 2);
+                totalTokens = Math.max(20, (full.length() + reasoning.length()) / 2);
             }
-            return new StreamResult(full.toString(), totalTokens);
+            String reasoningText = reasoning.isEmpty() ? null : reasoning.toString();
+            return new StreamResult(full.toString(), reasoningText, totalTokens);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             log.error("AI stream error", e);
             throw new BusinessException(ErrorCode.AI_ERROR.getCode(), e.getMessage());
+        }
+    }
+
+    /**
+     * 解析流式 delta：DeepSeek 思考链走 {@code reasoning_content}，正文走 {@code content}。
+     * 拆成静态方法方便单测，不连网。
+     */
+    static void applyDelta(JsonNode delta, StringBuilder content, StringBuilder reasoning,
+                           Consumer<StreamChunk> onChunk) {
+        if (delta == null || delta.isNull()) {
+            return;
+        }
+        JsonNode reasoningNode = delta.get("reasoning_content");
+        if (reasoningNode == null || reasoningNode.isNull()) {
+            reasoningNode = delta.get("reasoning");
+        }
+        if (reasoningNode != null && !reasoningNode.isNull()) {
+            String text = reasoningNode.asText();
+            if (StringUtils.hasText(text)) {
+                reasoning.append(text);
+                if (onChunk != null) {
+                    onChunk.accept(StreamChunk.reasoning(text));
+                }
+            }
+        }
+        JsonNode contentNode = delta.get("content");
+        if (contentNode != null && !contentNode.isNull()) {
+            String text = contentNode.asText();
+            if (StringUtils.hasText(text)) {
+                content.append(text);
+                if (onChunk != null) {
+                    onChunk.accept(StreamChunk.content(text));
+                }
+            }
         }
     }
 
@@ -314,8 +445,23 @@ public class AiModelService {
                 body.put("repetition_penalty", params.repetitionPenalty());
             }
         }
+        // 思考模式只对 DeepSeek 下发；Gemini/Claude/GLM 等遇不认识字段可能直接 400
+        String modelName = String.valueOf(body.get("model"));
+        if (params.thinkingEnabled() != null && supportsThinking(modelName)) {
+            Map<String, String> thinking = new LinkedHashMap<>();
+            thinking.put("type", params.thinkingEnabled() ? "enabled" : "disabled");
+            body.put("thinking", thinking);
+        }
         body.put("stream", stream);
         return body;
+    }
+
+    /** claudex 上 DeepSeek 系才认 thinking / reasoning_content */
+    static boolean supportsThinking(String modelName) {
+        if (!StringUtils.hasText(modelName)) {
+            return false;
+        }
+        return modelName.toLowerCase(Locale.ROOT).startsWith("deepseek");
     }
 
     /** 停止词串（| 分隔）→ 列表；OpenAI 兼容接口最多接受 4 条 */
@@ -338,8 +484,7 @@ public class AiModelService {
         if ("never".equalsIgnoreCase(extendedParams)) {
             return false;
         }
-        String baseUrl = StringUtils.hasText(cfg.getBaseUrl()) ? cfg.getBaseUrl() : defaultBaseUrl;
-        return isSelfHosted(baseUrl);
+        return isSelfHosted(cfg.getBaseUrl());
     }
 
     /** 本机 / 局域网地址 = 多半是 Ollama、vLLM、LM Studio，这些才认 top_k 与 repetition_penalty */
@@ -365,44 +510,55 @@ public class AiModelService {
     }
 
     public ModelConfig resolveConfig() {
+        return resolveConfig(null);
+    }
+
+    /**
+     * 解析实际调用用的模型配置。
+     *
+     * <p>API Key 与 Base URL <b>始终</b>来自 application.yml / 环境变量，
+     * 故意不读库表里的密钥，避免管理端改密、前端泄露。模型名优先用会话覆盖。
+     */
+    public ModelConfig resolveConfig(String modelOverride) {
         ModelConfig cfg = modelConfigMapper.findEnabled();
         if (cfg == null) {
             cfg = new ModelConfig();
             cfg.setStatus(1);
         }
-        // 库表空字段回落到 application.yml，避免旧种子数据盖住本地配置
-        if (!StringUtils.hasText(cfg.getApiKey())) {
-            cfg.setApiKey(defaultApiKey);
-        }
-        if (!StringUtils.hasText(cfg.getBaseUrl())) {
-            cfg.setBaseUrl(defaultBaseUrl);
-        }
-        if (!StringUtils.hasText(cfg.getModelName())) {
-            cfg.setModelName(defaultModelName);
-        }
+        cfg.setApiKey(defaultApiKey);
+        cfg.setBaseUrl(defaultBaseUrl);
+        // 模型名：会话覆盖 > 配置默认；不再读库表里的旧全局模型
+        cfg.setModelName(normalizeModelName(modelOverride));
         if (cfg.getContextWindowSize() == null) {
             cfg.setContextWindowSize(20);
         }
         return cfg;
     }
 
+    /** 管理端只读：脱敏后的配置摘要（密钥已迁到配置文件，不再支持在线改） */
     public ModelConfig getConfig() {
-        ModelConfig cfg = modelConfigMapper.findOne();
-        if (cfg != null && cfg.getApiKey() != null && cfg.getApiKey().length() > 8) {
-            cfg.setApiKey(cfg.getApiKey().substring(0, 4) + "****");
-        }
+        ModelConfig cfg = new ModelConfig();
+        cfg.setProvider("deepseek");
+        cfg.setBaseUrl(defaultBaseUrl);
+        cfg.setModelName(defaultChatModel());
+        cfg.setApiKey(maskKey(defaultApiKey));
+        cfg.setStatus(1);
         return cfg;
     }
 
+    private static String maskKey(String key) {
+        if (!StringUtils.hasText(key)) {
+            return "";
+        }
+        if (key.length() <= 8) {
+            return "****";
+        }
+        return key.substring(0, 4) + "****";
+    }
+
+    /** @deprecated 密钥与模型选择已迁出管理端；保留方法以免旧调用方编译失败 */
+    @Deprecated
     public void updateConfig(ModelConfig config) {
-        ModelConfig existing = modelConfigMapper.findOne();
-        if (existing == null) {
-            throw new BusinessException("模型配置不存在");
-        }
-        if (config.getApiKey() != null && config.getApiKey().contains("****")) {
-            config.setApiKey(existing.getApiKey());
-        }
-        config.setId(existing.getId());
-        modelConfigMapper.update(config);
+        throw new BusinessException("模型密钥请改 application.yml / 环境变量；聊天模型请在用户端会话里选择");
     }
 }

@@ -46,6 +46,16 @@
             同时生成立绘并上传
           </label>
 
+          <div class="space-y-2 rounded-xl border border-border/70 bg-secondary/30 p-3">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <p class="text-sm font-medium">生成用 AI</p>
+                <p class="text-[11px] text-muted-foreground">与聊天共用模型列表，密钥在服务端</p>
+              </div>
+              <ModelSelect v-model="modelName" :disabled="generating" label="角色卡模型" />
+            </div>
+          </div>
+
           <div class="flex flex-wrap gap-2 border-t border-border/60 pt-4">
             <Button :disabled="generating" @click="generate()">
               <Sparkles class="size-4" />
@@ -326,6 +336,7 @@ import { FileText, ImagePlus, Sparkles, Trash2, Volume2 } from 'lucide-vue-next'
 import { workshopGenerateCharacter, workshopGenerateAvatar } from '../api/workshop'
 import { createCharacter } from '../api/character'
 import { downloadStCardJson } from '../utils/sillyTavernCard'
+import ModelSelect from '../components/ModelSelect.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -343,6 +354,7 @@ const MAX_HISTORY = 30
 const idea = ref('')
 const worldContext = ref('')
 const withAvatar = ref(true)
+const modelName = ref(localStorage.getItem('tavern-chat-model') || 'deepseek-v4.1-flash')
 const generating = ref(false)
 const saving = ref(false)
 const savingId = ref(null)
@@ -559,6 +571,7 @@ async function generate() {
       idea: idea.value,
       worldContext: worldContext.value,
       withAvatar: withAvatar.value,
+      modelName: modelName.value,
     })
     draft.value = res
     avatarPrompt.value = res.avatarPrompt || ''

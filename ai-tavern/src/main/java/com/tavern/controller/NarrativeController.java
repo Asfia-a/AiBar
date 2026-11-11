@@ -37,7 +37,8 @@ public class NarrativeController {
                 str(body.get("formType")),
                 str(body.get("style")),
                 str(body.get("length")),
-                str(body.get("extraInstruction")));
+                str(body.get("extraInstruction")),
+                str(body.get("modelName")));
         return narrativeService.generate(UserContext.getUserId(), req);
     }
 
@@ -55,7 +56,8 @@ public class NarrativeController {
                 str(body.get("formType")),
                 str(body.get("style")),
                 str(body.get("length")),
-                str(body.get("extraInstruction")));
+                str(body.get("extraInstruction")),
+                str(body.get("modelName")));
         return Result.ok(narrativeService.rewriteSync(UserContext.getUserId(), req));
     }
 

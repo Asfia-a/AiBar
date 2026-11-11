@@ -102,6 +102,160 @@ public class WorldInfoAdminService {
     }
 
     /**
+     * 按角色导出条目为 JSON 友好结构（前端下载成文件）。
+     *
+     * <p>不含 id：导入时一律新建，避免把 A 库的 id 带进 B 库造成混乱。
+     * 字段名与 {@link WorldInfoRequest} 对齐，导入侧可以直接复用同一套兜底逻辑。
+     */
+    public Map<String, Object> export(Long userId, Long characterId) {
+        CharacterCard card = requireCharacterOwner(userId, characterId);
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (WorldInfoEntry e : worldInfoMapper.listByCharacter(characterId)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("title", e.getTitle());
+            m.put("keys", e.getKeys());
+            m.put("content", e.getContent());
+            m.put("position", e.getPosition());
+            m.put("depth", e.getDepth());
+            m.put("orderNo", e.getOrderNo());
+            m.put("probability", e.getProbability());
+            m.put("constant", e.isConstant());
+            m.put("enabled", e.isEnabled());
+            items.add(m);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("format", "ai-tavern-worldbook");
+        out.put("version", 1);
+        out.put("character", Map.of("id", characterId, "name", nvl(card.getName(), "")));
+        out.put("entries", items);
+        return out;
+    }
+
+    /**
+     * 导入条目：逐条走 {@link #normalize} 兜底，脏条目跳过而不是让整批失败。
+     *
+     * <p>角色条目上限照常生效——导入到 80 条为止，多出来的算 skipped。
+     */
+    @Transactional
+    public Map<String, Object> importEntries(Long userId, Long characterId,
+                                             List<Map<String, Object>> items) {
+        requireCharacterOwner(userId, characterId);
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("文件里没有可导入的条目");
+        }
+        int remaining = Math.max(MAX_ENTRIES_PER_CHARACTER - worldInfoMapper.listByCharacter(characterId).size(), 0);
+        int imported = 0;
+        int skipped = 0;
+        for (Map<String, Object> raw : items) {
+            WorldInfoRequest req = toRequest(raw);
+            if (req == null) {
+                skipped++;
+                continue;
+            }
+            if (imported >= remaining) {
+                skipped++;
+                continue;
+            }
+            WorldInfoEntry entry = new WorldInfoEntry();
+            entry.setCharacterId(characterId);
+            entry.setUserId(userId);
+            try {
+                normalize(entry, req);
+            } catch (BusinessException e) {
+                // 缺触发词之类的脏条目跳过，别让一条垃圾拖死整批
+                skipped++;
+                continue;
+            }
+            worldInfoMapper.insert(entry);
+            imported++;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("imported", imported);
+        out.put("skipped", skipped);
+        return out;
+    }
+
+    /** 拖拽排序：ids 按界面上的新顺序给出，order_no 重新按步长 10 编 */
+    @Transactional
+    public void reorder(Long userId, Long characterId, List<Long> ids) {
+        requireCharacterOwner(userId, characterId);
+        if (ids == null || ids.isEmpty()) {
+            throw new BusinessException("没有要排序的条目");
+        }
+        Set<Long> own = worldInfoMapper.listByCharacter(characterId).stream()
+                .map(WorldInfoEntry::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!own.containsAll(ids)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        int order = 0;
+        for (Long id : ids) {
+            worldInfoMapper.updateOrderNo(id, order);
+            order += 10;
+        }
+    }
+
+    /** 导入文件里的单条 → 请求体；没有正文的条目返回 null（视为脏数据跳过） */
+    private WorldInfoRequest toRequest(Map<String, Object> raw) {
+        if (raw == null) {
+            return null;
+        }
+        String content = strOf(raw.get("content"));
+        if (content == null || content.isBlank()) {
+            return null;
+        }
+        WorldInfoRequest req = new WorldInfoRequest();
+        req.setTitle(strOf(raw.get("title")));
+        req.setKeys(strOf(raw.get("keys")));
+        req.setContent(content);
+        req.setPosition(strOf(raw.get("position")));
+        req.setDepth(intOf(raw.get("depth")));
+        req.setOrderNo(intOf(raw.get("orderNo")));
+        req.setProbability(intOf(raw.get("probability")));
+        // constant / enabled 兼容布尔与 1/0 两种写法，导出文件手改过也能吃进来
+        req.setConstant(boolOf(raw.get("constant"), false)
+                || boolOf(raw.get("constantOn") != null ? raw.get("constantOn") : raw.get("constant_on"), false));
+        req.setEnabled(boolOf(raw.get("enabled"), true));
+        return req;
+    }
+
+    private static String strOf(Object v) {
+        return v == null ? null : String.valueOf(v);
+    }
+
+    private static Integer intOf(Object v) {
+        if (v == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(Integer.parseInt(String.valueOf(v).trim()));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static boolean boolOf(Object v, boolean fallback) {
+        if (v == null) {
+            return fallback;
+        }
+        if (v instanceof Boolean b) {
+            return b;
+        }
+        String s = String.valueOf(v).trim();
+        if ("1".equals(s) || "true".equalsIgnoreCase(s)) {
+            return true;
+        }
+        if ("0".equals(s) || "false".equalsIgnoreCase(s)) {
+            return false;
+        }
+        return fallback;
+    }
+
+    private static String nvl(String v, String fallback) {
+        return v == null || v.isBlank() ? fallback : v;
+    }
+
+    /**
      * 命中预演：拿一段文本跑一遍激活逻辑，返回命中了哪几条、各占多少 token。
      *
      * <p>不写库、不调模型，所以管理页可以随便点——这也是最容易演示的一点：

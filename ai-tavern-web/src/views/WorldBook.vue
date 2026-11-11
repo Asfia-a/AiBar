@@ -20,6 +20,22 @@
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <input
+          ref="importInput"
+          type="file"
+          accept="application/json,.json"
+          class="hidden"
+          @change="onImportPicked"
+        />
+        <Button variant="outline" :disabled="importing" @click="importInput?.click()">
+          <Loader2 v-if="importing" class="size-4 animate-spin" />
+          <Upload v-else class="size-4" />
+          导入
+        </Button>
+        <Button variant="outline" @click="exportBook">
+          <Download class="size-4" />
+          导出
+        </Button>
         <Button variant="outline" @click="startNew('global')">
           <Globe class="size-4" />
           全局条目
@@ -50,19 +66,23 @@
             <template v-else>
               <p class="px-2 pt-1.5 pb-1 text-[11px] tracking-wide text-muted-foreground">
                 角色条目 · {{ filteredCharacter.length }}
+                <span class="opacity-70">（拖动可排序）</span>
               </p>
-              <button
+              <div
                 v-for="e in filteredCharacter"
                 :key="e.id"
-                type="button"
-                class="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-secondary/70"
-                :class="form?.id === e.id ? 'bg-secondary' : ''"
+                class="flex w-full cursor-grab items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-secondary/70"
+                :class="[
+                  form?.id === e.id ? 'bg-secondary' : '',
+                  draggedId === e.id ? 'opacity-40' : '',
+                ]"
+                draggable="true"
                 @click="select(e, 'character')"
+                @dragstart="onDragStart(e, $event)"
+                @dragover.prevent
+                @drop.prevent="onDropTo(e.id)"
+                @dragend="draggedId = null"
               >
-                <span
-                  class="mt-[7px] size-1.5 shrink-0 rounded-full"
-                  :class="e.enabled === 1 ? 'bg-foreground' : 'bg-muted-foreground/40'"
-                />
                 <span class="min-w-0 flex-1">
                   <span class="block truncate text-sm">{{ e.title }}</span>
                   <span class="mt-0.5 block truncate text-[11px] text-muted-foreground">
@@ -72,7 +92,13 @@
                 <span class="mt-0.5 shrink-0 text-[10px] text-muted-foreground">
                   {{ posLabel(e.position) }}
                 </span>
-              </button>
+                <span class="mt-0.5 shrink-0" @click.stop>
+                  <Switch
+                    :model-value="e.enabled === 1"
+                    @update:model-value="(v) => toggleEnabled(e, v)"
+                  />
+                </span>
+              </div>
               <p
                 v-if="!filteredCharacter.length"
                 class="px-2 py-4 text-center text-xs text-muted-foreground"
@@ -84,11 +110,10 @@
                 我的全局条目 · {{ filteredGlobal.length }}
                 <span class="opacity-70">（对所有角色生效）</span>
               </p>
-              <button
+              <div
                 v-for="e in filteredGlobal"
                 :key="`g-${e.id}`"
-                type="button"
-                class="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-secondary/70"
+                class="flex w-full cursor-pointer items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-secondary/70"
                 :class="form?.id === e.id ? 'bg-secondary' : ''"
                 @click="select(e, 'global')"
               >
@@ -99,7 +124,13 @@
                     {{ e.constantOn === 1 ? '常量 · 每轮都插' : e.keys || '无触发词' }}
                   </span>
                 </span>
-              </button>
+                <span class="mt-0.5 shrink-0" @click.stop>
+                  <Switch
+                    :model-value="e.enabled === 1"
+                    @update:model-value="(v) => toggleEnabled(e, v)"
+                  />
+                </span>
+              </div>
               <p v-if="!filteredGlobal.length" class="px-2 py-4 text-center text-xs text-muted-foreground">
                 还没有全局条目
               </p>
@@ -327,12 +358,14 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
+  Download,
   FlaskConical,
   Globe,
   Loader2,
   Plus,
   Search,
   Trash2,
+  Upload,
   Wand2,
 } from 'lucide-vue-next'
 import { getCharacterDetail } from '../api/character'
@@ -340,8 +373,12 @@ import {
   createGlobalEntry,
   createWorldEntry,
   deleteWorldEntry,
+  exportWorldBook,
   getWorldBook,
+  importWorldBook,
   previewWorldBook,
+  reorderWorldEntries,
+  toggleWorldEntry,
   updateWorldEntry,
 } from '../api/worldbook'
 import { Badge } from '@/components/ui/badge'
@@ -375,6 +412,11 @@ const sample = ref('')
 const preview = ref(null)
 const confirmingDelete = ref(false)
 let confirmTimer = null
+
+const importInput = ref(null)
+const importing = ref(false)
+/** 正在拖拽的条目 id；null 表示没有拖拽在进行 */
+const draggedId = ref(null)
 
 const estTokens = computed(() => Math.ceil((form.value?.content?.length || 0) / 1.5))
 
@@ -507,6 +549,96 @@ async function remove() {
     toast.error(e?.message || '删除失败')
   } finally {
     confirmingDelete.value = false
+  }
+}
+
+/** 列表上的一键开关：乐观更新，失败回滚（配置都还在，改的只是 enabled） */
+async function toggleEnabled(entry, val) {
+  const next = val ? 1 : 0
+  if (entry.enabled === next) return
+  const prev = entry.enabled
+  entry.enabled = next
+  try {
+    await toggleWorldEntry(entry.id, !!val)
+  } catch (e) {
+    entry.enabled = prev
+    toast.error(e?.message || '切换失败')
+  }
+}
+
+/** 拖拽按「条目 id」而不是列表下标走：搜索过滤时下标会错位，id 不会 */
+function onDragStart(entry, event) {
+  draggedId.value = entry.id
+  event.dataTransfer.effectAllowed = 'move'
+  try {
+    event.dataTransfer.setData('text/plain', String(entry.id))
+  } catch {
+    /* Firefox 需要 setData 才启动拖拽，失败不影响主流程 */
+  }
+}
+
+function onDropTo(targetId) {
+  const fromId = draggedId.value
+  draggedId.value = null
+  if (fromId == null || fromId === targetId) return
+  const list = [...entries.value]
+  const fromIdx = list.findIndex((e) => e.id === fromId)
+  const toIdx = list.findIndex((e) => e.id === targetId)
+  if (fromIdx < 0 || toIdx < 0) return
+  const [moved] = list.splice(fromIdx, 1)
+  list.splice(toIdx, 0, moved)
+  entries.value = list
+  persistOrder(list)
+}
+
+async function persistOrder(list) {
+  try {
+    await reorderWorldEntries(
+      characterId.value,
+      list.map((e) => e.id),
+    )
+  } catch (e) {
+    toast.error(e?.message || '排序保存失败')
+    await load()
+  }
+}
+
+async function exportBook() {
+  try {
+    const data = await exportWorldBook(characterId.value)
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `世界书-${characterName.value || characterId.value}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('已导出为 JSON 文件')
+  } catch (e) {
+    toast.error(e?.message || '导出失败')
+  }
+}
+
+async function onImportPicked(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  importing.value = true
+  try {
+    const parsed = JSON.parse(await file.text())
+    const items = Array.isArray(parsed) ? parsed : parsed?.entries
+    if (!Array.isArray(items) || !items.length) {
+      throw new Error('文件里没有条目，请选择本系统导出的世界书 JSON')
+    }
+    const res = await importWorldBook(characterId.value, items)
+    await load()
+    const imported = res?.imported ?? 0
+    const skipped = res?.skipped ?? 0
+    toast.success(`已导入 ${imported} 条${skipped ? `，跳过 ${skipped} 条脏数据` : ''}`)
+  } catch (e) {
+    toast.error(e?.message || '导入失败')
+  } finally {
+    importing.value = false
   }
 }
 

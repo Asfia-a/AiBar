@@ -63,4 +63,8 @@ public interface WorldInfoMapper {
 
     @Update("UPDATE t_world_info_entry SET enabled=#{enabled} WHERE id=#{id}")
     int updateEnabled(@Param("id") Long id, @Param("enabled") int enabled);
+
+    /** 拖拽排序：order_no 步长 10，给中间插入留空隙 */
+    @Update("UPDATE t_world_info_entry SET order_no=#{orderNo} WHERE id=#{id}")
+    int updateOrderNo(@Param("id") Long id, @Param("orderNo") int orderNo);
 }

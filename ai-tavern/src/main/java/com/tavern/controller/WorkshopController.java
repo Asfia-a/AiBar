@@ -25,7 +25,8 @@ public class WorkshopController {
         String idea = str(body.get("idea"));
         String worldContext = str(body.get("worldContext"));
         boolean withAvatar = body.get("withAvatar") == null || Boolean.TRUE.equals(body.get("withAvatar"));
-        return Result.ok(characterAssistService.generateCard(idea, worldContext, withAvatar));
+        String modelName = str(body.get("modelName"));
+        return Result.ok(characterAssistService.generateCard(idea, worldContext, withAvatar, modelName));
     }
 
     /** 仅生立绘并上传 OSS */
@@ -40,8 +41,9 @@ public class WorkshopController {
         String idea = str(body.get("idea"));
         String worldContext = str(body.get("worldContext"));
         boolean withAvatar = body.get("withAvatar") == null || Boolean.TRUE.equals(body.get("withAvatar"));
+        String modelName = str(body.get("modelName"));
         return Result.ok(characterAssistService.generateAndSave(
-                UserContext.getUserId(), idea, worldContext, withAvatar));
+                UserContext.getUserId(), idea, worldContext, withAvatar, modelName));
     }
 
     /** AI 根据自然语言一键生成世界树 */

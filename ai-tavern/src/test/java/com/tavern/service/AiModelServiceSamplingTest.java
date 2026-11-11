@@ -1,9 +1,11 @@
 package com.tavern.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tavern.entity.ModelConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -23,8 +25,12 @@ class AiModelServiceSamplingTest {
     private final List<Map<String, String>> messages = List.of(Map.of("role", "user", "content", "你好"));
 
     private ModelConfig cfg(String baseUrl) {
+        return cfg(baseUrl, "test-model");
+    }
+
+    private ModelConfig cfg(String baseUrl, String modelName) {
         ModelConfig cfg = new ModelConfig();
-        cfg.setModelName("test-model");
+        cfg.setModelName(modelName);
         cfg.setBaseUrl(baseUrl);
         return cfg;
     }
@@ -113,5 +119,86 @@ class AiModelServiceSamplingTest {
         assertFalse(AiModelService.isSelfHosted("https://api.deepseek.com/v1"));
         assertFalse(AiModelService.isSelfHosted("https://172.32.0.1/v1"));
         assertFalse(AiModelService.isSelfHosted(null));
+    }
+
+    @Test
+    @DisplayName("thinking=null 不进请求体，交给网关默认")
+    void thinkingOmittedWhenNull() {
+        Map<String, Object> body = AiModelService.buildRequestBody(
+                cfg("https://claudex.org/v1", "deepseek-v4.1-flash"), messages, "fallback",
+                AiModelService.ChatParams.simple(0.7, 0.9, 500), true, false);
+        assertFalse(body.containsKey("thinking"));
+    }
+
+    @Test
+    @DisplayName("thinking=false 显式下发 disabled，避免 DeepSeek 默认开思考")
+    void thinkingDisabledExplicit() {
+        Map<String, Object> body = AiModelService.buildRequestBody(
+                cfg("https://claudex.org/v1", "deepseek-v4.1-flash"), messages, "fallback",
+                AiModelService.ChatParams.simple(0.7, 0.9, 500).withThinking(false),
+                true, false);
+        @SuppressWarnings("unchecked")
+        Map<String, String> thinking = (Map<String, String>) body.get("thinking");
+        assertEquals("disabled", thinking.get("type"));
+    }
+
+    @Test
+    @DisplayName("thinking=true 显式下发 enabled")
+    void thinkingEnabledExplicit() {
+        Map<String, Object> body = AiModelService.buildRequestBody(
+                cfg("https://claudex.org/v1", "deepseek-v4-pro"), messages, "fallback",
+                AiModelService.ChatParams.simple(0.7, 0.9, 500).withThinking(true),
+                true, false);
+        @SuppressWarnings("unchecked")
+        Map<String, String> thinking = (Map<String, String>) body.get("thinking");
+        assertEquals("enabled", thinking.get("type"));
+    }
+
+    @Test
+    @DisplayName("非 DeepSeek 模型即使开思考也不下发 thinking 字段")
+    void thinkingSkippedForNonDeepSeek() {
+        Map<String, Object> body = AiModelService.buildRequestBody(
+                cfg("https://claudex.org/v1", "gemini-3-flash"), messages, "fallback",
+                AiModelService.ChatParams.simple(0.7, 0.9, 500).withThinking(true),
+                true, false);
+        assertFalse(body.containsKey("thinking"));
+        assertFalse(AiModelService.supportsThinking("claude-opus-4-6"));
+        assertTrue(AiModelService.supportsThinking("deepseek-v4.1-flash"));
+    }
+
+    @Test
+    @DisplayName("流式 delta：reasoning_content 与 content 分开累积")
+    void applyDeltaSplitsReasoningAndContent() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        StringBuilder content = new StringBuilder();
+        StringBuilder reasoning = new StringBuilder();
+        List<AiModelService.StreamChunk> chunks = new ArrayList<>();
+
+        AiModelService.applyDelta(
+                om.readTree("{\"reasoning_content\":\"先想一步\",\"content\":null}"),
+                content, reasoning, chunks::add);
+        AiModelService.applyDelta(
+                om.readTree("{\"content\":\"你好\"}"),
+                content, reasoning, chunks::add);
+
+        assertEquals("先想一步", reasoning.toString());
+        assertEquals("你好", content.toString());
+        assertEquals(AiModelService.StreamChunk.Kind.REASONING, chunks.get(0).kind());
+        assertEquals(AiModelService.StreamChunk.Kind.CONTENT, chunks.get(1).kind());
+    }
+
+    @Test
+    @DisplayName("流式 delta：兼容 reasoning 字段名；空 delta 不炸")
+    void applyDeltaAcceptsReasoningAlias() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        StringBuilder content = new StringBuilder();
+        StringBuilder reasoning = new StringBuilder();
+        AiModelService.applyDelta(om.readTree("{\"reasoning\":\"沉思\"}"), content, reasoning, null);
+        assertEquals("沉思", reasoning.toString());
+        assertEquals("", content.toString());
+        // 空 delta 不抛异常
+        AiModelService.applyDelta(null, content, reasoning, null);
+        AiModelService.applyDelta(om.nullNode(), content, reasoning, null);
+        assertEquals("沉思", reasoning.toString());
     }
 }

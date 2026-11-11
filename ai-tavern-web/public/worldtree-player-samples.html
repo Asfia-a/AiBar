@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>世界广场 · 游玩端样品</title>
+  <style>
+    :root {
+      --bg: #121417;
+      --panel: #1a1d22;
+      --panel2: #22262d;
+      --ink: #e8e4dc;
+      --muted: #9a958c;
+      --line: rgba(255,255,255,0.08);
+      --accent: #d4a574;
+      --accent2: #7eb8c9;
+      --ok: #7dba8a;
+      --font: "Iowan Old Style", "Palatino Linotype", "Songti SC", Georgia, serif;
+      --ui: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --glow: 0 0 40px rgba(212,165,116,0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: var(--ui);
+      background:
+        radial-gradient(900px 500px at 15% 0%, #2a2420 0%, transparent 55%),
+        radial-gradient(800px 480px at 90% 10%, #1c2a30 0%, transparent 50%),
+        var(--bg);
+    }
+    .page { max-width: 1120px; margin: 0 auto; padding: 28px 18px 72px; }
+    h1 {
+      font-family: var(--font);
+      font-size: 1.7rem;
+      font-weight: 600;
+      margin: 0 0 6px;
+      letter-spacing: 0.03em;
+    }
+    .lead { color: var(--muted); font-size: 0.92rem; line-height: 1.6; max-width: 40rem; margin: 0 0 18px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .tabs button {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    .tabs button.active {
+      background: var(--ink);
+      color: #141414;
+      border-color: var(--ink);
+    }
+    .stage {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: var(--panel);
+      box-shadow: var(--glow);
+      min-height: 640px;
+    }
+    .sample { display: none; min-height: 640px; }
+    .sample.active { display: flex; flex-direction: column; }
+    .note {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-left: 3px solid var(--accent);
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.55;
+    }
+    .note strong { color: var(--ink); }
+
+    /* shared chrome */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(0,0,0,0.2);
+    }
+    .topbar .title { font-family: var(--font); font-size: 1rem; }
+    .topbar .meta { color: var(--muted); font-size: 0.75rem; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      background: rgba(255,255,255,0.03);
+    }
+    .pill b { color: var(--accent); font-weight: 600; }
+    .btn {
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      color: var(--ink);
+      padding: 7px 12px;
+      font-size: 0.78rem;
+      cursor: default;
+    }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #1a120c;
+      font-weight: 600;
+    }
+
+    /* P plaza */
+    .plaza {
+      padding: 28px 20px 32px;
+      background:
+        linear-gradient(180deg, rgba(40,32,28,0.5), transparent 40%),
+        var(--panel);
+    }
+    .plaza-hero {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .plaza-hero .kicker {
+      font-size: 0.7rem;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .plaza-hero h2 {
+      font-family: var(--font);
+      font-size: 2rem;
+      margin: 10px 0 8px;
+      font-weight: 600;
+    }
+    .plaza-hero p { color: var(--muted); font-size: 0.9rem; margin: 0 auto; max-width: 26rem; }
+    .gate-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    @media (max-width: 800px) {
+      .gate-grid { grid-template-columns: 1fr; }
+    }
+    .gate {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      min-height: 220px;
+      background: #0e1013;
+      cursor: default;
+      transition: transform 0.2s ease, border-color 0.2s;
+    }
+    .gate:hover { transform: translateY(-3px); border-color: rgba(212,165,116,0.35); }
+    .gate .bg {
+      position: absolute; inset: 0;
+      opacity: 0.85;
+    }
+    .gate:nth-child(1) .bg {
+      background:
+        radial-gradient(circle at 30% 20%, rgba(212,165,116,0.35), transparent 45%),
+        linear-gradient(160deg, #3a2a22, #12151a 60%);
+    }
+    .gate:nth-child(2) .bg {
+      background:
+        radial-gradient(circle at 70% 30%, rgba(126,184,201,0.3), transparent 40%),
+        linear-gradient(160deg, #1e2e35, #12151a 60%);
+    }
+    .gate:nth-child(3) .bg {
+      background:
+        radial-gradient(circle at 40% 60%, rgba(125,186,138,0.25), transparent 40%),
+        linear-gradient(160deg, #243028, #12151a 60%);
+    }
+    .gate .body {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 16px;
+      min-height: 220px;
+    }
+    .gate .enter {
+      align-self: flex-start;
+      margin-bottom: 10px;
+      font-size: 0.68rem;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .gate h3 {
+      font-family: var(--font);
+      margin: 0 0 6px;
+      font-size: 1.15rem;
+    }
+    .gate p { margin: 0; color: rgba(232,228,220,0.7); font-size: 0.78rem; line-height: 1.45; }
+    .gate .foot {
+      margin-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.7rem;
+    }
+
+    /* Hub */
+    .hub {
+      position: relative;
+      flex: 1;
+      min-height: 580px;
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse at 50% 40%, rgba(212,165,116,0.12), transparent 55%),
+        radial-gradient(ellipse at 50% 100%, rgba(0,0,0,0.5), transparent 40%),
+        #151820;
+    }
+    .hub-center {
+      position: absolute;
+      left: 50%;
+      top: 42%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      width: min(420px, 86%);
+      z-index: 2;
+    }
+    .hub-center .whisper {
+      font-size: 0.72rem;
+      letter-spacing: 0.28em;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+    .hub-center h2 {
+      font-family: var(--font);
+      font-size: 1.8rem;
+      margin: 0 0 12px;
+      font-weight: 600;
+    }
+    .hub-center .intro {
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.7;
+      margin: 0 0 16px;
+    }
+    .zones {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .zone {
+      position: absolute;
+      pointer-events: auto;
+      width: 140px;
+      padding: 12px 12px 10px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(26,29,34,0.82);
+      backdrop-filter: blur(8px);
+      cursor: default;
+      transition: 0.15s ease;
+    }
+    .zone:hover {
+      border-color: rgba(212,165,116,0.45);
+      transform: scale(1.03);
+    }
+    .zone .z-k { font-size: 0.65rem; color: var(--accent2); letter-spacing: 0.12em; margin-bottom: 4px; }
+    .zone .z-t { font-family: var(--font); font-size: 0.95rem; margin-bottom: 4px; }
+    .zone .z-s { font-size: 0.7rem; color: var(--muted); line-height: 1.35; }
+    .z1 { left: 8%; top: 18%; }
+    .z2 { right: 8%; top: 16%; }
+    .z3 { left: 6%; bottom: 16%; }
+    .z4 { right: 7%; bottom: 18%; }
+    .z5 { left: 50%; bottom: 8%; transform: translateX(-50%); }
+    .hub-actions {
+      position: absolute;
+      left: 50%;
+      top: 62%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 2;
+    }
+
+    /* Region */
+    .region {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      min-height: 580px;
+    }
+    @media (max-width: 800px) {
+      .region { grid-template-columns: 1fr; }
+    }
+    .region-main {
+      padding: 16px;
+      background:
+        linear-gradient(180deg, #1c2228, #151820);
+    }
+    .crumbs {
+      color: var(--muted);
+      font-size: 0.75rem;
+      margin-bottom: 12px;
+    }
+    .crumbs span { color: var(--accent); }
+    .spot-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .spot {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255,255,255,0.03);
+      min-height: 96px;
+      transition: 0.15s;
+    }
+    .spot:hover, .spot.on {
+      border-color: rgba(126,184,201,0.45);
+      background: rgba(126,184,201,0.06);
+    }
+    .spot .s-t { font-family: var(--font); font-size: 0.95rem; margin-bottom: 4px; }
+    .spot .s-d { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+    .spot .s-tag {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 0.65rem;
+      color: var(--accent2);
+      border: 1px solid rgba(126,184,201,0.25);
+      border-radius: 999px;
+      padding: 2px 7px;
+    }
+    .scene {
+      border-left: 1px solid var(--line);
+      padding: 16px;
+      background: #12151a;
+      display: flex;
+      flex-direction: column;
+    }
+    .scene h3 {
+      font-family: var(--font);
+      margin: 0 0 8px;
+      font-size: 1.2rem;
+    }
+    .scene .body {
+      flex: 1;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.75;
+    }
+    .scene .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    /* Encounter */
+    .encounter {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      padding: 28px 16px;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(126,184,201,0.15), transparent 50%),
+        #14181e;
+    }
+    .card-encounter {
+      width: min(420px, 100%);
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #232830, #1a1e24);
+      padding: 22px 20px 18px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+    }
+    .card-encounter .badge {
+      font-size: 0.68rem;
+      letter-spacing: 0.2em;
+      color: var(--accent2);
+      margin-bottom: 10px;
+    }
+    .card-encounter h2 {
+      font-family: var(--font);
+      margin: 0 0 10px;
+      font-size: 1.45rem;
+    }
+    .card-encounter p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.7;
+    }
+    .card-encounter .choices {
+      display: grid;
+      gap: 8px;
+    }
+    .choice {
+      text-align: left;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      color: var(--ink);
+      padding: 11px 12px;
+      font-size: 0.84rem;
+      cursor: default;
+    }
+    .choice:hover { border-color: rgba(212,165,116,0.4); }
+
+    /* Timeline */
+    .rail-wrap {
+      padding: 28px 20px 40px;
+      overflow-x: auto;
+      background: #14181e;
+    }
+    .rail {
+      position: relative;
+      display: flex;
+      gap: 0;
+      min-width: 920px;
+      padding: 40px 10px 20px;
+    }
+    .rail::before {
+      content: "";
+      position: absolute;
+      left: 20px; right: 20px; top: 54px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(212,165,116,0.5), transparent);
+    }
+    .stop {
+      position: relative;
+      flex: 1;
+      padding-top: 28px;
+      text-align: center;
+    }
+    .stop .dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      margin: 0 auto 12px;
+      background: var(--panel2);
+      border: 2px solid var(--accent);
+      position: relative;
+      z-index: 1;
+    }
+    .stop.on .dot {
+      background: var(--accent);
+      box-shadow: 0 0 16px rgba(212,165,116,0.5);
+    }
+    .stop .year { font-size: 0.68rem; color: var(--muted); margin-bottom: 4px; }
+    .stop .name {
+      font-family: var(--font);
+      font-size: 0.82rem;
+      padding: 0 6px;
+      line-height: 1.35;
+    }
+    .timeline-panel {
+      margin: 0 20px 24px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      background: rgba(255,255,255,0.03);
+    }
+    .timeline-panel h3 {
+      font-family: var(--font);
+      margin: 0 0 8px;
+      font-size: 1.1rem;
+    }
+    .timeline-panel p { margin: 0; color: var(--muted); font-size: 0.86rem; line-height: 1.65; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>世界广场 · 游玩端样品</h1>
+    <p class="lead">
+      不是「读设定集」，而是「进入动态作品」：广场像选关，详情像大厅探索。
+      点标签切换四套样品（静态线框）。
+    </p>
+
+    <div class="tabs" id="tabs">
+      <button type="button" class="active" data-id="p">P · 广场入口</button>
+      <button type="button" data-id="h">S1 · 世界大厅</button>
+      <button type="button" data-id="r">S1 · 区域深入</button>
+      <button type="button" data-id="e">S3 · 漫游遭遇</button>
+      <button type="button" data-id="t">S2 · 时空轨道</button>
+    </div>
+
+    <div class="stage">
+      <!-- Plaza -->
+      <section class="sample active" id="p">
+        <div class="plaza">
+          <div class="plaza-hero">
+            <div class="kicker">Enter a World</div>
+            <h2>选择要进入的世界</h2>
+            <p>每个入口是一场可探索的作品，不是一篇待读文档。</p>
+          </div>
+          <div class="gate-grid">
+            <article class="gate">
+              <div class="bg"></div>
+              <div class="body">
+                <div class="enter">Enter →</div>
+                <h3>示我周行</h3>
+                <p>战争结束了。不周山的信使带来一封尚未拆开的世界。</p>
+                <div class="foot">
+                  <span>大型世界</span>
+                  <span>1.2k 进入</span>
+                </div>
+              </div>
+            </article>
+            <article class="gate">
+              <div class="bg"></div>
+              <div class="body">
+                <div class="enter">Enter →</div>
+                <h3>永夜港口</h3>
+                <p>真名会留下银色足迹，潮汐由失落的钟声驱动。</p>
+                <div class="foot">
+                  <span>中型世界</span>
+                  <span>328 进入</span>
+                </div>
+              </div>
+            </article>
+            <article class="gate">
+              <div class="bg"></div>
+              <div class="body">
+                <div class="enter">Enter →</div>
+                <h3>空中花园残卷</h3>
+                <p>理想主义的避难所。泡沫还在，雨已经停了。</p>
+                <div class="foot">
+                  <span>小型世界</span>
+                  <span>96 进入</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- Hub -->
+      <section class="sample" id="h">
+        <div class="topbar">
+          <div>
+            <div class="title">示我周行</div>
+            <div class="meta">世界大厅 · 选择要踏入的区域</div>
+          </div>
+          <div class="pill">探索 <b>24</b> / 274</div>
+        </div>
+        <div class="hub">
+          <div class="zones">
+            <div class="zone z1">
+              <div class="z-k">ZONE</div>
+              <div class="z-t">背景</div>
+              <div class="z-s">前言 · 信仰 · 水铅</div>
+            </div>
+            <div class="zone z2">
+              <div class="z-k">ZONE</div>
+              <div class="z-t">种族</div>
+              <div class="z-s">生者与余众</div>
+            </div>
+            <div class="zone z3">
+              <div class="z-k">ZONE</div>
+              <div class="z-t">大地</div>
+              <div class="z-s">可见与不可见的国</div>
+            </div>
+            <div class="zone z4">
+              <div class="z-k">ZONE</div>
+              <div class="z-t">设定集</div>
+              <div class="z-s">137 处可遭逢</div>
+            </div>
+            <div class="zone z5">
+              <div class="z-k">ZONE</div>
+              <div class="z-t">时间线</div>
+              <div class="z-s">48 个历史站点</div>
+            </div>
+          </div>
+          <div class="hub-center">
+            <div class="whisper">POSTAL BRIEFING</div>
+            <h2>您好，朋友，战争结束了。</h2>
+            <p class="intro">我是不周山邮政的信使。所多玛·新尼尼微女士已去世，但信件仍会送达。你想先去哪里？</p>
+          </div>
+          <div class="hub-actions">
+            <span class="btn primary">开始漫游</span>
+            <span class="btn">足迹</span>
+            <span class="btn">回广场</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Region -->
+      <section class="sample" id="r">
+        <div class="topbar">
+          <div>
+            <div class="title">区域 · 种族</div>
+            <div class="meta">大厅 / 种族</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div class="pill">本区 <b>4</b> / 7</div>
+            <span class="btn">回大厅</span>
+          </div>
+        </div>
+        <div class="region">
+          <div class="region-main">
+            <div class="crumbs">大厅 / <span>种族</span> / 点选一个存在</div>
+            <div class="spot-grid">
+              <div class="spot on">
+                <div class="s-t">奥斯提亚硫斯</div>
+                <div class="s-d">走在地上的神明？凡人难辨其心。</div>
+                <span class="s-tag">已发现</span>
+              </div>
+              <div class="spot">
+                <div class="s-t">奥雷罗</div>
+                <div class="s-d">新的未来，带着实验气质。</div>
+                <span class="s-tag">未深入</span>
+              </div>
+              <div class="spot">
+                <div class="s-t">温戈里康</div>
+                <div class="s-d">往我所要指示你的地去。</div>
+                <span class="s-tag">未深入</span>
+              </div>
+              <div class="spot">
+                <div class="s-t">戈里米</div>
+                <div class="s-d">蒙难的人，以受难记忆为身份。</div>
+                <span class="s-tag">未深入</span>
+              </div>
+            </div>
+          </div>
+          <aside class="scene">
+            <h3>奥斯提亚硫斯</h3>
+            <div class="body">
+              他们近神而行。你在驿站灯下看见一道没有影子的身形——不是幻觉，是世界规则允许的例外。
+              <br /><br />
+              （点「深入」展开完整正文；像调查一件证物，而不是翻开一章书。）
+            </div>
+            <div class="actions">
+              <span class="btn primary">深入</span>
+              <span class="btn">与他开聊</span>
+              <span class="btn">标记足迹</span>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Encounter -->
+      <section class="sample" id="e">
+        <div class="topbar">
+          <div>
+            <div class="title">漫游遭遇</div>
+            <div class="meta">随机抽出一处你尚未踏足的点位</div>
+          </div>
+          <div class="pill">今日还可漫游 <b>2</b></div>
+        </div>
+        <div class="encounter">
+          <div class="card-encounter">
+            <div class="badge">ENCOUNTER</div>
+            <h2>空中花园</h2>
+            <p>
+              理想主义的避难所仍悬在云上。有人在栏杆边吸烟，烟灰落不下去——风把它送回杯盏。
+              你要在这里停留，还是把信件继续往下送？
+            </p>
+            <div class="choices">
+              <div class="choice">停留，听完这段</div>
+              <div class="choice">进入「背景 · 梦境」区域</div>
+              <div class="choice">再漫游一次</div>
+              <div class="choice">回大厅</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Timeline -->
+      <section class="sample" id="t">
+        <div class="topbar">
+          <div>
+            <div class="title">时空轨道</div>
+            <div class="meta">拖过历史站点 · 点停查看现场</div>
+          </div>
+          <div class="pill">站点 <b>48</b></div>
+        </div>
+        <div class="rail-wrap">
+          <div class="rail">
+            <div class="stop"><div class="dot"></div><div class="year">993</div><div class="name">拓荒团独立</div></div>
+            <div class="stop"><div class="dot"></div><div class="year">—</div><div class="name">东十字战争</div></div>
+            <div class="stop on"><div class="dot"></div><div class="year">—</div><div class="name">第七次魔王战争</div></div>
+            <div class="stop"><div class="dot"></div><div class="year">—</div><div class="name">万国会议</div></div>
+            <div class="stop"><div class="dot"></div><div class="year">—</div><div class="name">不周山成立</div></div>
+            <div class="stop"><div class="dot"></div><div class="year">—</div><div class="name">空中花园</div></div>
+          </div>
+        </div>
+        <div class="timeline-panel">
+          <h3>第七次魔王战争</h3>
+          <p>大战收场，秩序重组。胜利者写下和平，失败者写下伤口。你站在停战公告张贴处——纸边还潮着。</p>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <span class="btn primary">查看现场</span>
+            <span class="btn">关联人物</span>
+            <span class="btn">回大厅</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="note" id="note">
+      <strong>P · 广场入口：</strong>卡片像关卡门，强调「进入」而非「阅读」。
+    </div>
+  </div>
+
+  <script>
+    const notes = {
+      p: '<strong>P · 广场入口：</strong>卡片像关卡门，强调「进入」而非「阅读」。',
+      h: '<strong>S1 · 世界大厅：</strong>开场白 + 可点区域，像游戏枢纽图。',
+      r: '<strong>S1 · 区域深入：</strong>点位墙 + 右侧场景交互（深入 / 开聊 / 足迹）。',
+      e: '<strong>S3 · 漫游遭遇：</strong>随机遭逢未读点，降低巨树压力，增加回访。',
+      t: '<strong>S2 · 时空轨道：</strong>时间线特化玩法，适合历史向世界。',
+    }
+    const tabs = document.getElementById('tabs')
+    const note = document.getElementById('note')
+    tabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-id]')
+      if (!btn) return
+      tabs.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn))
+      document.querySelectorAll('.sample').forEach((s) => s.classList.toggle('active', s.id === btn.dataset.id))
+      note.innerHTML = notes[btn.dataset.id]
+    })
+  </script>
+</body>
+</html>

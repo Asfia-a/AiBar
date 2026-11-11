@@ -15,7 +15,8 @@ import java.util.List;
 @Mapper
 public interface MessageSwipeMapper {
 
-    @Insert("INSERT INTO t_message_swipe(message_id, idx, content, tokens) VALUES(#{messageId}, #{idx}, #{content}, #{tokens})")
+    @Insert("INSERT INTO t_message_swipe(message_id, idx, content, reasoning, tokens) "
+            + "VALUES(#{messageId}, #{idx}, #{content}, #{reasoning}, #{tokens})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(MessageSwipe swipe);
 

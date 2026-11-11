@@ -18,6 +18,12 @@ public record PromptInput(
         String background,
         String exampleDialogue,
         String tags,
+        /** Post-History Instructions：拼在全部历史之后的收尾强指令，空表示不追加 */
+        String postHistory,
+        /** 用户人设描述；空表示不注入「关于用户」块（名字仍走 userName） */
+        String userPersona,
+        /** 早期剧情摘要；空表示不注入 */
+        String memorySummary,
         List<Turn> history,
         /** 作者注释内容，空表示这轮不插 */
         String authorNote,
@@ -51,6 +57,9 @@ public record PromptInput(
         private String background;
         private String exampleDialogue;
         private String tags;
+        private String postHistory;
+        private String userPersona;
+        private String memorySummary;
         private List<Turn> history = List.of();
         private String authorNote;
         private int authorNoteDepth = 0;
@@ -74,6 +83,21 @@ public record PromptInput(
 
         public Builder user(String name) {
             this.userName = name;
+            return this;
+        }
+
+        public Builder userPersona(String text) {
+            this.userPersona = text;
+            return this;
+        }
+
+        public Builder memorySummary(String text) {
+            this.memorySummary = text;
+            return this;
+        }
+
+        public Builder postHistory(String text) {
+            this.postHistory = text;
             return this;
         }
 
@@ -104,9 +128,9 @@ public record PromptInput(
 
         public PromptInput build() {
             return new PromptInput(charName, userName, description, personality, background,
-                    exampleDialogue, tags, history, authorNote, authorNoteDepth,
-                    authorNoteFrequency, userTurnCount, worldEntries, scanDepth,
-                    maxInputTokens, maxOutputTokens);
+                    exampleDialogue, tags, postHistory, userPersona, memorySummary, history,
+                    authorNote, authorNoteDepth, authorNoteFrequency, userTurnCount,
+                    worldEntries, scanDepth, maxInputTokens, maxOutputTokens);
         }
     }
 }

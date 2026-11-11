@@ -13,6 +13,9 @@ const routes = [
     component: () => import('../layouts/MainLayout.vue'),
     children: [
       { path: '', name: 'Home', component: () => import('../views/Home.vue') },
+      { path: 'worlds', name: 'WorldPlaza', component: () => import('../views/WorldPlaza.vue') },
+      { path: 'worlds/:id', name: 'WorldDetail', component: () => import('../views/WorldDetail.vue') },
+      { path: 'my-worlds', name: 'MyWorldTrees', component: () => import('../views/MyWorldTrees.vue'), meta: { requiresAuth: true } },
       { path: 'character/:id', name: 'CharacterDetail', component: () => import('../views/CharacterDetail.vue') },
       { path: 'character/:id/worldbook', name: 'WorldBook', component: () => import('../views/WorldBook.vue'), meta: { requiresAuth: true } },
       { path: 'chat/:sessionId?', name: 'Chat', component: () => import('../views/Chat.vue'), meta: { requiresAuth: true, fullBleed: true } },

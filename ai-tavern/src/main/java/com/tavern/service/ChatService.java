@@ -47,6 +47,11 @@ public class ChatService {
     private final RuntimeMetricsService runtimeMetricsService;
     private final PromptEngine promptEngine;
     private final WorldInfoMapper worldInfoMapper;
+    private final MemorySummaryService memorySummaryService;
+
+    /** 用户人设描述上限 */
+    private static final int MAX_PERSONA_CHARS = 1500;
+    private static final int MAX_PERSONA_NAME = 32;
 
     @Value("${ai.model.context-window-size:20}")
     private int defaultContextWindow;
@@ -65,6 +70,10 @@ public class ChatService {
     private final ExecutorService sseExecutor = Executors.newCachedThreadPool();
 
     public ChatSession createSession(Long userId, Long characterId, String title) {
+        return createSession(userId, characterId, title, null);
+    }
+
+    public ChatSession createSession(Long userId, Long characterId, String title, String modelName) {
         CharacterCard card = characterMapper.findById(characterId);
         if (card == null || card.getStatus() != 2) {
             throw new BusinessException(ErrorCode.CHARACTER_NOT_FOUND);
@@ -73,6 +82,9 @@ public class ChatService {
         ChatSession existing = sessionMapper.findLatestByUserAndCharacter(userId, characterId);
         if (existing != null) {
             ensurePromptSnapshot(existing, card);
+            if (modelName != null && !modelName.isBlank()) {
+                saveSessionModel(userId, existing.getId(), modelName);
+            }
             return sessionMapper.findById(existing.getId());
         }
         ChatSession session = new ChatSession();
@@ -82,6 +94,7 @@ public class ChatService {
         session.setMessageCount(0);
         session.setTotalTokens(0L);
         session.setPromptSnapshot(buildPromptSnapshot(card));
+        session.setModelName(aiModelService.normalizeModelName(modelName));
         sessionMapper.insert(session);
 
         if (card.getGreeting() != null && !card.getGreeting().isBlank()) {
@@ -140,6 +153,109 @@ public class ChatService {
         return toAuthorNoteMap(sessionMapper.findById(sessionId));
     }
 
+    /** 可选聊天模型列表（无密钥） */
+    public Map<String, Object> listModels() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("defaultModel", aiModelService.defaultChatModel());
+        out.put("models", aiModelService.listChatModels());
+        return out;
+    }
+
+    public Map<String, Object> persona(Long userId, Long sessionId) {
+        return toPersonaMap(requireOwnSession(userId, sessionId));
+    }
+
+    public Map<String, Object> savePersona(Long userId, Long sessionId, String name, String desc) {
+        requireOwnSession(userId, sessionId);
+        String n = name == null ? "" : name.trim();
+        String d = desc == null ? "" : desc.trim();
+        if (n.length() > MAX_PERSONA_NAME) {
+            throw new BusinessException("人设称呼最多 " + MAX_PERSONA_NAME + " 字");
+        }
+        if (d.length() > MAX_PERSONA_CHARS) {
+            throw new BusinessException("人设描述最多 " + MAX_PERSONA_CHARS + " 字");
+        }
+        sessionMapper.updatePersona(sessionId, userId,
+                n.isEmpty() ? null : n, d.isEmpty() ? null : d);
+        return toPersonaMap(sessionMapper.findById(sessionId));
+    }
+
+    public Map<String, Object> memory(Long userId, Long sessionId) {
+        return toMemoryMap(requireOwnSession(userId, sessionId));
+    }
+
+    /**
+     * 保存记忆设置。summary 可手改；enabled=false 时下一轮不再自动压缩、也不注入旧摘要。
+     */
+    public Map<String, Object> saveMemory(Long userId, Long sessionId, String summary,
+                                          Boolean enabled, boolean clearUntil) {
+        ChatSession s = requireOwnSession(userId, sessionId);
+        int on = enabled == null
+                ? (s.getMemoryEnabled() == null ? 1 : s.getMemoryEnabled())
+                : (enabled ? 1 : 0);
+        String text = summary == null ? s.getMemorySummary() : summary.trim();
+        if (text != null && text.length() > MemorySummaryService.MAX_SUMMARY_CHARS) {
+            text = text.substring(0, MemorySummaryService.MAX_SUMMARY_CHARS);
+        }
+        if (text != null && text.isBlank()) {
+            text = null;
+        }
+        Long until = clearUntil || text == null ? null : s.getMemoryUntilId();
+        // 手改摘要后仍保留 until，避免下一轮立刻用旧对话把手工摘要盖掉；
+        // 若用户清空摘要，until 一并清掉，好重新积累。
+        if (summary != null && text == null) {
+            until = null;
+        }
+        sessionMapper.updateMemory(sessionId, userId, text, until, on);
+        return toMemoryMap(sessionMapper.findById(sessionId));
+    }
+
+    /** 强制把窗口外未覆盖的对话压进摘要（聊天页「立即刷新」） */
+    public Map<String, Object> refreshMemory(Long userId, Long sessionId) {
+        ChatSession session = requireOwnSession(userId, sessionId);
+        CharacterCard card = characterMapper.findById(session.getCharacterId());
+        ensureMemorySummary(session, card, true);
+        return toMemoryMap(sessionMapper.findById(sessionId));
+    }
+
+    private Map<String, Object> toPersonaMap(ChatSession s) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sessionId", s.getId());
+        out.put("personaName", s.getPersonaName());
+        out.put("personaDesc", s.getPersonaDesc());
+        out.put("active", (s.getPersonaName() != null && !s.getPersonaName().isBlank())
+                || (s.getPersonaDesc() != null && !s.getPersonaDesc().isBlank()));
+        return out;
+    }
+
+    private Map<String, Object> toMemoryMap(ChatSession s) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sessionId", s.getId());
+        out.put("summary", s.getMemorySummary());
+        out.put("untilId", s.getMemoryUntilId());
+        out.put("enabled", s.getMemoryEnabled() == null || s.getMemoryEnabled() == 1);
+        out.put("active", s.getMemorySummary() != null && !s.getMemorySummary().isBlank()
+                && (s.getMemoryEnabled() == null || s.getMemoryEnabled() == 1));
+        out.put("summaryChars", s.getMemorySummary() == null ? 0 : s.getMemorySummary().length());
+        return out;
+    }
+
+    /** 会话切换模型；立即生效于下一轮生成 */
+    public Map<String, Object> saveSessionModel(Long userId, Long sessionId, String modelName) {
+        requireOwnSession(userId, sessionId);
+        String normalized = aiModelService.normalizeModelName(modelName);
+        sessionMapper.updateModelName(sessionId, userId, normalized);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sessionId", sessionId);
+        out.put("modelName", normalized);
+        return out;
+    }
+
+    private String resolveSessionModel(ChatSession session) {
+        String fromSession = session == null ? null : session.getModelName();
+        return aiModelService.normalizeModelName(fromSession);
+    }
+
     private ChatSession requireOwnSession(Long userId, Long sessionId) {
         ChatSession session = sessionMapper.findById(sessionId);
         if (session == null || userId == null || !userId.equals(session.getUserId())) {
@@ -167,12 +283,21 @@ public class ChatService {
     }
 
     public SseEmitter stream(Long userId, Long sessionId, Long characterId, String message) {
+        return stream(userId, sessionId, characterId, message, null);
+    }
+
+    /**
+     * @param thinkingEnabled DeepSeek 思考模式；null=默认关闭（扮演更稳更快），true/false 显式下发
+     */
+    public SseEmitter stream(Long userId, Long sessionId, Long characterId, String message,
+                             Boolean thinkingEnabled) {
         SseEmitter emitter = new SseEmitter(180_000L);
         emitter.onTimeout(emitter::complete);
         emitter.onError(e -> log.warn("SSE error callback: {}", e.toString()));
+        Boolean thinking = thinkingEnabled == null ? Boolean.FALSE : thinkingEnabled;
         sseExecutor.execute(() -> {
             try {
-                doStream(userId, sessionId, characterId, message, emitter, null, null);
+                doStream(userId, sessionId, characterId, message, emitter, null, null, thinking);
             } catch (Exception e) {
                 failStream(emitter, e, "SSE error");
             }
@@ -215,13 +340,18 @@ public class ChatService {
 
     /** 给某条助手消息再生成一个版本，流式返回；老版本留在 t_message_swipe */
     public SseEmitter swipe(Long userId, Long messageId) {
+        return swipe(userId, messageId, null);
+    }
+
+    public SseEmitter swipe(Long userId, Long messageId, Boolean thinkingEnabled) {
         ChatMessage target = requireOwnAssistantMessage(userId, messageId);
         SseEmitter emitter = new SseEmitter(180_000L);
         emitter.onTimeout(emitter::complete);
         emitter.onError(e -> log.warn("SSE swipe error callback: {}", e.toString()));
+        Boolean thinking = thinkingEnabled == null ? Boolean.FALSE : thinkingEnabled;
         sseExecutor.execute(() -> {
             try {
-                doStream(userId, target.getSessionId(), null, null, emitter, true, target.getId());
+                doStream(userId, target.getSessionId(), null, null, emitter, true, target.getId(), thinking);
             } catch (Exception e) {
                 failStream(emitter, e, "swipe error");
             }
@@ -239,12 +369,13 @@ public class ChatService {
         }
         int count = Math.max(msg.getSwipeCount() == null ? 1 : msg.getSwipeCount(), idx + 1);
         int tokens = swipe.getTokens() == null ? 0 : swipe.getTokens();
-        messageMapper.updateActive(messageId, swipe.getContent(), tokens, idx, count);
+        messageMapper.updateActive(messageId, swipe.getContent(), swipe.getReasoning(), tokens, idx, count);
         syncSessionTail(msg.getSessionId(), messageId, swipe.getContent(), "assistant");
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("messageId", messageId);
         out.put("content", swipe.getContent());
+        out.put("reasoning", swipe.getReasoning());
         out.put("swipeIndex", idx);
         out.put("swipeCount", count);
         return out;
@@ -304,12 +435,22 @@ public class ChatService {
         copy.setMessageCount(0);
         copy.setTotalTokens(0L);
         copy.setPromptSnapshot(src.getPromptSnapshot());
+        copy.setModelName(resolveSessionModel(src));
         sessionMapper.insert(copy);
 
         if (src.getAuthorNote() != null) {
             sessionMapper.updateAuthorNote(copy.getId(), userId, src.getAuthorNote(),
                     src.getAnDepth() == null ? 0 : src.getAnDepth(),
                     src.getAnFrequency() == null ? 1 : src.getAnFrequency());
+        }
+        // 人设与记忆一并带走，否则分支线会丢「你是谁 / 发生过什么」
+        if (src.getPersonaName() != null || src.getPersonaDesc() != null) {
+            sessionMapper.updatePersona(copy.getId(), userId, src.getPersonaName(), src.getPersonaDesc());
+        }
+        if (src.getMemorySummary() != null || (src.getMemoryEnabled() != null && src.getMemoryEnabled() == 0)) {
+            sessionMapper.updateMemory(copy.getId(), userId, src.getMemorySummary(),
+                    src.getMemoryUntilId(),
+                    src.getMemoryEnabled() == null ? 1 : src.getMemoryEnabled());
         }
 
         List<ChatMessage> all = messageMapper.listBySession(src.getId());
@@ -320,12 +461,29 @@ public class ChatService {
             if (m.getId() > messageId) {
                 break;
             }
+            // 多版本一起带过去：分支出来的会话要能左右滑回老版本，
+            // 否则「分支保留完整走向」只对当前展示的那一版成立
+            List<MessageSwipe> swipes = messageSwipeMapper.findByMessage(m.getId());
             ChatMessage item = new ChatMessage();
             item.setSessionId(copy.getId());
             item.setRole(m.getRole());
             item.setContent(m.getContent());
+            item.setReasoning(m.getReasoning());
             item.setTokens(0);
+            if (!swipes.isEmpty()) {
+                item.setSwipeCount(Math.max(swipes.size(), m.getSwipeCount() == null ? 1 : m.getSwipeCount()));
+                item.setSwipeIndex(Math.min(m.getSwipeIndex() == null ? 0 : m.getSwipeIndex(), swipes.size() - 1));
+            }
             messageMapper.insert(item);
+            for (MessageSwipe s : swipes) {
+                MessageSwipe cp = new MessageSwipe();
+                cp.setMessageId(item.getId());
+                cp.setIdx(s.getIdx());
+                cp.setContent(s.getContent());
+                cp.setReasoning(s.getReasoning());
+                cp.setTokens(s.getTokens());
+                messageSwipeMapper.insert(cp);
+            }
             copied++;
             lastContent = m.getContent();
             lastRole = m.getRole();
@@ -337,6 +495,48 @@ public class ChatService {
         created.setLastRole(lastRole);
         sessionMapper.update(created);
         return created;
+    }
+
+    /**
+     * 删除「一轮」对话：用户消息 + 紧随其后的助手回复（或反过来）。
+     *
+     * <p>点在用户气泡上：删该用户消息，以及下一条若是助手则一并删。
+     * 点在助手气泡上：删该助手消息，以及上一条若是用户则一并删。
+     * 删完后 {@code buildPrompt} 读不到这些行，下一轮生成对模型生效。
+     */
+    @Transactional
+    public Map<String, Object> deleteRound(Long userId, Long sessionId, Long messageId) {
+        requireOwnSession(userId, sessionId);
+        if (messageId == null) {
+            throw new BusinessException("请指定要删除的消息");
+        }
+        List<ChatMessage> all = messageMapper.listBySession(sessionId);
+        int idx = -1;
+        for (int i = 0; i < all.size(); i++) {
+            if (messageId.equals(all.get(i).getId())) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0) {
+            throw new BusinessException("消息不属于当前会话");
+        }
+        ChatMessage pivot = all.get(idx);
+        List<Long> ids = new ArrayList<>();
+        ids.add(pivot.getId());
+        String role = pivot.getRole() == null ? "" : pivot.getRole();
+        if ("user".equalsIgnoreCase(role)) {
+            if (idx + 1 < all.size() && "assistant".equalsIgnoreCase(all.get(idx + 1).getRole())) {
+                ids.add(all.get(idx + 1).getId());
+            }
+        } else if ("assistant".equalsIgnoreCase(role)) {
+            if (idx > 0 && "user".equalsIgnoreCase(all.get(idx - 1).getRole())) {
+                ids.add(0, all.get(idx - 1).getId());
+            }
+        }
+        Map<String, Object> out = deleteMessages(userId, sessionId, ids);
+        out.put("roundIds", ids);
+        return out;
     }
 
     /**
@@ -416,7 +616,8 @@ public class ChatService {
     }
 
     private void doStream(Long userId, Long sessionId, Long characterId, String message,
-                          SseEmitter emitter, Boolean skipUserInsert, Long swipeMessageId) throws IOException {
+                          SseEmitter emitter, Boolean skipUserInsert, Long swipeMessageId,
+                          Boolean thinkingEnabled) throws IOException {
         User user = userMapper.findById(userId);
         if (user.getPoints() == null || user.getPoints() <= 0) {
             emitter.send(SseEmitter.event().name("error")
@@ -492,8 +693,16 @@ public class ChatService {
         meta.put("worldInfoChars", bundle.worldInfoChars());
         meta.put("authorNoteChars", bundle.authorNoteChars());
         meta.put("activatedEntries", bundle.activatedEntries());
+        meta.put("activatedCount", bundle.activatedEntries() == null ? 0 : bundle.activatedEntries().size());
+        String modelName = resolveSessionModel(session);
         meta.put("estimatedTokens", bundle.estimatedTokens());
         meta.put("maxTokens", maxTokens);
+        meta.put("modelName", modelName);
+        meta.put("personaChars", bundle.personaChars());
+        meta.put("memoryChars", bundle.memoryChars());
+        meta.put("hasMemory", bundle.memoryChars() > 0);
+        meta.put("hasPersona", bundle.personaChars() > 0);
+        meta.put("thinking", Boolean.TRUE.equals(thinkingEnabled));
 
         emitter.send(SseEmitter.event()
                 .name("meta")
@@ -505,12 +714,18 @@ public class ChatService {
                 toDouble(promptCard.getFrequencyPenalty()),
                 toDouble(promptCard.getPresencePenalty()),
                 toDouble(promptCard.getRepetitionPenalty()),
-                AiModelService.parseStopWords(promptCard.getStopWords()));
+                AiModelService.parseStopWords(promptCard.getStopWords()),
+                thinkingEnabled);
 
-        AiModelService.StreamResult result = aiModelService.streamChat(prompt, params, delta -> {
+        AiModelService.StreamResult result = aiModelService.streamChat(prompt, params, modelName, chunk -> {
             try {
-                if (delta != null && !delta.isEmpty()) {
-                    emitter.send(SseEmitter.event().data(delta, MediaType.TEXT_PLAIN));
+                if (chunk == null || chunk.text() == null || chunk.text().isEmpty()) {
+                    return;
+                }
+                if (chunk.kind() == AiModelService.StreamChunk.Kind.REASONING) {
+                    emitter.send(SseEmitter.event().name("reasoning").data(chunk.text(), MediaType.TEXT_PLAIN));
+                } else {
+                    emitter.send(SseEmitter.event().data(chunk.text(), MediaType.TEXT_PLAIN));
                 }
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -547,7 +762,8 @@ public class ChatService {
         String cut = truncateAround(content, hit.get(0));
         String replaced = cut + "\n\n（该段内容因包含不当信息已被系统隐去）";
         contentAuditService.recordSyncHit(userId, session.getId(), null, content, hit);
-        return new AiModelService.StreamResult(replaced, result.totalTokens());
+        // 审核只动正文，思考链原样保留（不进后续提示词）
+        return new AiModelService.StreamResult(replaced, result.reasoning(), result.totalTokens());
     }
 
     /**
@@ -591,6 +807,7 @@ public class ChatService {
         aiMsg.setSessionId(session.getId());
         aiMsg.setRole("assistant");
         aiMsg.setContent(result.content());
+        aiMsg.setReasoning(blankToNull(result.reasoning()));
         aiMsg.setTokens(apiTokens);
         messageMapper.insert(aiMsg);
 
@@ -623,6 +840,7 @@ public class ChatService {
             first.setMessageId(target.getId());
             first.setIdx(0);
             first.setContent(target.getContent());
+            first.setReasoning(target.getReasoning());
             first.setTokens(target.getTokens() == null ? 0 : target.getTokens());
             messageSwipeMapper.insert(first);
             versions = messageSwipeMapper.findByMessage(target.getId());
@@ -633,10 +851,12 @@ public class ChatService {
         swipe.setMessageId(target.getId());
         swipe.setIdx(nextIdx);
         swipe.setContent(result.content());
+        swipe.setReasoning(blankToNull(result.reasoning()));
         swipe.setTokens(apiTokens);
         messageSwipeMapper.insert(swipe);
 
-        messageMapper.updateActive(target.getId(), result.content(), apiTokens, nextIdx, nextIdx + 1);
+        messageMapper.updateActive(target.getId(), result.content(), blankToNull(result.reasoning()),
+                apiTokens, nextIdx, nextIdx + 1);
 
         // 只有重写的是最后一轮，才动会话摘要；否则会话列表会显示得莫名其妙
         if (messageMapper.countAfter(session.getId(), target.getId()) == 0) {
@@ -711,6 +931,8 @@ public class ChatService {
             m.put("personality", card.getPersonality());
             m.put("backgroundStory", card.getBackgroundStory());
             m.put("exampleDialogue", card.getExampleDialogue());
+            // 收尾指令也一起冻结：它是人设的一部分，改了不该影响老会话的手感
+            m.put("postHistory", card.getPostHistory());
             m.put("temperature", card.getTemperature());
             m.put("topP", card.getTopP());
             m.put("maxTokens", card.getMaxTokens());
@@ -742,6 +964,8 @@ public class ChatService {
             card.setPersonality(asString(m.get("personality"), live.getPersonality()));
             card.setBackgroundStory(asString(m.get("backgroundStory"), live.getBackgroundStory()));
             card.setExampleDialogue(asString(m.get("exampleDialogue"), live.getExampleDialogue()));
+            // 老快照里没有这个字段，回落到实时卡；新会话则用冻结值
+            card.setPostHistory(asString(m.get("postHistory"), live.getPostHistory()));
             card.setTemperature(asDecimal(m.get("temperature"), live.getTemperature()));
             card.setTopP(asDecimal(m.get("topP"), live.getTopP()));
             card.setMaxTokens(asInt(m.get("maxTokens"), live.getMaxTokens()));
@@ -783,13 +1007,8 @@ public class ChatService {
      */
     private PromptBundle buildPrompt(CharacterCard card, Long sessionId, Long cutoffMessageId) {
         ChatSession session = sessionMapper.findById(sessionId);
-        String userName = "你";
-        if (session != null && session.getUserId() != null) {
-            User u = userMapper.findById(session.getUserId());
-            if (u != null && u.getNickname() != null && !u.getNickname().isBlank()) {
-                userName = u.getNickname();
-            }
-        }
+        // 人设称呼优先于账号昵称，这样 {{user}} 才是「扮演中的你」
+        String userName = resolveUserName(session);
 
         String style = "";
         if (card.getTags() != null && !card.getTags().isEmpty()) {
@@ -813,6 +1032,11 @@ public class ChatService {
             recent.removeIf(m -> m.getId() != null && m.getId() >= cutoffMessageId);
         }
         Collections.reverse(recent);
+
+        // 窗口外的早期消息 → 压进记忆摘要，再注入提示词
+        ensureMemorySummary(session, card, false);
+        session = sessionMapper.findById(sessionId);
+
         List<PromptInput.Turn> history = recent.stream()
                 .filter(m -> !"system".equals(m.getRole()))
                 .map(m -> new PromptInput.Turn(m.getRole(), m.getContent()))
@@ -822,6 +1046,11 @@ public class ChatService {
         String authorNote = session == null ? null : session.getAuthorNote();
         int anDepth = session == null || session.getAnDepth() == null ? 0 : session.getAnDepth();
         int anFreq = session == null || session.getAnFrequency() == null ? 1 : session.getAnFrequency();
+
+        String personaDesc = session == null ? null : session.getPersonaDesc();
+        boolean memoryOn = session == null || session.getMemoryEnabled() == null
+                || session.getMemoryEnabled() == 1;
+        String memorySummary = memoryOn && session != null ? session.getMemorySummary() : null;
 
         List<WorldInfoEntry> entries = card.getId() == null
                 ? List.of()
@@ -833,7 +1062,10 @@ public class ChatService {
         PromptInput input = PromptInput.builder()
                 .character(card.getName(), card.getDescription(), card.getPersonality(),
                         card.getBackgroundStory(), card.getExampleDialogue(), style)
+                .postHistory(card.getPostHistory())
                 .user(userName)
+                .userPersona(personaDesc)
+                .memorySummary(memorySummary)
                 .history(history)
                 .authorNote(authorNote, anDepth, anFreq, userTurns)
                 .world(entries, worldInfoScanDepth)
@@ -841,9 +1073,65 @@ public class ChatService {
                 .build();
 
         PromptBundle bundle = promptEngine.build(input);
-        // 会话总消息数只有这里知道，用来算「被窗口丢掉多少」
         int total = messageMapper.countBySession(sessionId);
         return bundle.withDroppedRounds(Math.max(total - bundle.usedRounds(), 0));
+    }
+
+    private String resolveUserName(ChatSession session) {
+        if (session != null && session.getPersonaName() != null && !session.getPersonaName().isBlank()) {
+            return session.getPersonaName().trim();
+        }
+        if (session != null && session.getUserId() != null) {
+            User u = userMapper.findById(session.getUserId());
+            if (u != null && u.getNickname() != null && !u.getNickname().isBlank()) {
+                return u.getNickname();
+            }
+        }
+        return "你";
+    }
+
+    /**
+     * 把「滚出上下文窗口、且尚未进摘要」的消息压进 memory_summary。
+     *
+     * @param force 聊天页「立即刷新」时为 true：只要有未覆盖段落就压，不要求窗口已满
+     */
+    private void ensureMemorySummary(ChatSession session, CharacterCard card, boolean force) {
+        if (session == null || session.getId() == null) {
+            return;
+        }
+        if (!force && session.getMemoryEnabled() != null && session.getMemoryEnabled() == 0) {
+            return;
+        }
+        int window = defaultContextWindow;
+        ModelConfig cfg = aiModelService.resolveConfig();
+        if (cfg.getContextWindowSize() != null && cfg.getContextWindowSize() > 0) {
+            window = cfg.getContextWindowSize();
+        }
+        List<ChatMessage> recent = messageMapper.listRecent(session.getId(), window);
+        Long oldestInWindowId = null;
+        if (!recent.isEmpty()) {
+            // listRecent 是 id DESC，最后一条（或 get 末尾）是窗口内最早
+            oldestInWindowId = recent.get(recent.size() - 1).getId();
+        }
+        List<ChatMessage> uncovered = messageMapper.listRange(
+                session.getId(), session.getMemoryUntilId(), oldestInWindowId,
+                MemorySummaryService.MAX_BATCH_MESSAGES);
+        if (!MemorySummaryService.needsRefresh(session.getMemoryUntilId(), oldestInWindowId, uncovered.size())
+                && !force) {
+            return;
+        }
+        if (uncovered.isEmpty()) {
+            return;
+        }
+        String charName = card == null || card.getName() == null ? "角色" : card.getName();
+        String userName = resolveUserName(session);
+        String summary = memorySummaryService.compress(
+                session.getMemorySummary(), uncovered, charName, userName);
+        Long untilId = uncovered.get(uncovered.size() - 1).getId();
+        int enabled = session.getMemoryEnabled() == null ? 1 : session.getMemoryEnabled();
+        sessionMapper.updateMemory(session.getId(), session.getUserId(), summary, untilId, enabled);
+        session.setMemorySummary(summary);
+        session.setMemoryUntilId(untilId);
     }
 
     public void collectMessage(Long userId, Long messageId) {
@@ -853,6 +1141,10 @@ public class ChatService {
     public PageResult<ChatMessage> search(Long userId, String keyword, int page, int size) {
         PageHelper.startPage(page, size);
         return PageResult.of(messageMapper.search(userId, keyword));
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 
     private static String asString(Object v, String fallback) {

@@ -124,6 +124,9 @@ const panOrigin = reactive({ x: 0, y: 0, px: 0, py: 0 })
 /* 节点类型配色：低饱和色相，只用来区分类型，不抢内容 */
 const TYPE_COLORS = {
   world: '#c9a227',
+  calendar: '#38bdf8',
+  chapter: '#94a3b8',
+  race: '#fb7185',
   era: '#a78bfa',
   region: '#60a5fa',
   faction: '#f87171',

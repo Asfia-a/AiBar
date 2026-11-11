@@ -22,6 +22,18 @@ public class ChatSession {
     private Integer anDepth;
     /** 插入频率：每 N 条用户消息插一次，0=不插 */
     private Integer anFrequency;
+    /** 本会话选用的模型名；空则回落配置默认值 */
+    private String modelName;
+    /** 用户人设称呼，优先于账号昵称作为 {{user}} */
+    private String personaName;
+    /** 用户人设描述，注入提示词「关于用户」 */
+    private String personaDesc;
+    /** 被窗口裁掉的早期剧情摘要 */
+    private String memorySummary;
+    /** 摘要已覆盖到的消息 id（含） */
+    private Long memoryUntilId;
+    /** 1=自动摘要，0=关闭 */
+    private Integer memoryEnabled;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

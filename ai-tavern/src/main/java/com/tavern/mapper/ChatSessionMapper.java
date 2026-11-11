@@ -14,8 +14,8 @@ public interface ChatSessionMapper {
     ChatSession findById(Long id);
 
     @Insert("""
-            INSERT INTO t_chat_session(user_id, character_id, title, last_message, last_role, message_count, total_tokens, prompt_snapshot)
-            VALUES(#{userId}, #{characterId}, #{title}, #{lastMessage}, #{lastRole}, #{messageCount}, #{totalTokens}, #{promptSnapshot})
+            INSERT INTO t_chat_session(user_id, character_id, title, last_message, last_role, message_count, total_tokens, prompt_snapshot, model_name)
+            VALUES(#{userId}, #{characterId}, #{title}, #{lastMessage}, #{lastRole}, #{messageCount}, #{totalTokens}, #{promptSnapshot}, #{modelName})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(ChatSession session);
@@ -37,6 +37,31 @@ public interface ChatSessionMapper {
     int updateAuthorNote(@Param("id") Long id, @Param("userId") Long userId,
                          @Param("note") String note, @Param("depth") int depth,
                          @Param("frequency") int frequency);
+
+    /** 聊天页切换模型：只改模型名，密钥仍走配置文件 */
+    @Update("""
+            UPDATE t_chat_session SET model_name=#{modelName}, updated_at=NOW()
+            WHERE id=#{id} AND user_id=#{userId}
+            """)
+    int updateModelName(@Param("id") Long id, @Param("userId") Long userId,
+                        @Param("modelName") String modelName);
+
+    @Update("""
+            UPDATE t_chat_session SET persona_name=#{personaName}, persona_desc=#{personaDesc},
+            updated_at=NOW() WHERE id=#{id} AND user_id=#{userId}
+            """)
+    int updatePersona(@Param("id") Long id, @Param("userId") Long userId,
+                      @Param("personaName") String personaName,
+                      @Param("personaDesc") String personaDesc);
+
+    @Update("""
+            UPDATE t_chat_session SET memory_summary=#{summary}, memory_until_id=#{untilId},
+            memory_enabled=#{enabled}, updated_at=NOW()
+            WHERE id=#{id} AND user_id=#{userId}
+            """)
+    int updateMemory(@Param("id") Long id, @Param("userId") Long userId,
+                     @Param("summary") String summary, @Param("untilId") Long untilId,
+                     @Param("enabled") int enabled);
 
     @Select("SELECT s.*, c.name AS character_name, c.avatar AS character_avatar FROM t_chat_session s " +
             "LEFT JOIN t_character c ON s.character_id=c.id WHERE s.user_id=#{userId} ORDER BY s.updated_at DESC")

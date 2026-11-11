@@ -5,7 +5,7 @@ spring:
   datasource:
     url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/ai_tavern?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:1234}
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
@@ -46,10 +46,13 @@ storage:
 ai:
   model:
     provider: deepseek
+    # API Key / Base URL 只放配置文件或环境变量，不进管理端、不暴露给前端
     # 未配置 AI_API_KEY 时自动降级为本地模拟流式
     api-key: ${AI_API_KEY:}
+    # 默认走 claudex 聚合网关（OpenAI 兼容）；本地可在 application-local.yml 覆盖
     base-url: ${AI_BASE_URL:https://claudex.org/v1}
-    model-name: ${AI_MODEL_NAME:deepseek-v4-flash}
+    # 用户未选模型时的默认值；可选列表见 AiModelService.CHAT_MODELS
+    model-name: ${AI_MODEL_NAME:deepseek-v4.1-flash}
     context-window-size: 20
     # top_k / repetition_penalty 不是 OpenAI 标准参数，云端网关会直接 400。
     # auto=只有 base-url 指向本机/局域网（Ollama、vLLM 等）才下发；always=总是；never=从不

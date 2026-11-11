@@ -275,6 +275,31 @@
         </CardContent>
       </Card>
 
+      <!-- 收尾指令 -->
+      <Card>
+        <CardHeader>
+          <CardTitle class="text-base">
+            收尾指令
+            <Badge variant="outline" class="ml-1 font-normal text-muted-foreground">
+              Post-History Instructions
+            </Badge>
+          </CardTitle>
+          <CardDescription>
+            拼在全部对话历史之后的一条强指令，离模型的回复最近、约束力最强。最多 2000 字。
+          </CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-2">
+          <Textarea
+            v-model="form.postHistory"
+            :rows="3"
+            placeholder="例：保持第二人称叙事；不要替「你」做决定；每段回复不超过 300 字。"
+          />
+          <p class="text-xs text-muted-foreground">
+            写进角色卡、对这个角色的所有会话生效；想要临时调整请用对话页的「作者注释」，两者不冲突。
+          </p>
+        </CardContent>
+      </Card>
+
       <!-- 模型参数 -->
       <Card>
         <CardHeader>
@@ -551,6 +576,8 @@ const form = reactive({
   personality: '',
   backgroundStory: '',
   exampleDialogue: '',
+  // 拼在全部历史之后的收尾强指令，空表示不追加
+  postHistory: '',
   greeting: '',
   categoryId: null,
   categoryName: '',
@@ -905,6 +932,7 @@ onMounted(async () => {
         personality: c.personality,
         backgroundStory: c.backgroundStory,
         exampleDialogue: c.exampleDialogue,
+        postHistory: c.postHistory || '',
         greeting: c.greeting,
         categoryId: c.categoryId,
         tagIds: (c.tags || []).map((t) => t.id),

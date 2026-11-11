@@ -186,6 +186,15 @@
               </div>
 
               <div class="mt-auto flex flex-col gap-2">
+                <div class="space-y-2 rounded-xl border border-border/70 bg-secondary/30 p-3">
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <p class="text-sm font-medium">生成用 AI</p>
+                      <p class="text-[11px] text-muted-foreground">小说 / 剧本 / 大纲都走这里选的模型</p>
+                    </div>
+                    <ModelSelect v-model="form.modelName" :disabled="generating" label="叙事模型" />
+                  </div>
+                </div>
                 <Button class="w-full" :disabled="!canGenerate" @click="startGenerate">
                   <Loader2 v-if="generating" class="size-4 animate-spin" />
                   <Sparkles v-else class="size-4" />
@@ -643,6 +652,7 @@ import {
 } from '../api/narrative'
 import { useAuthStore } from '../stores/auth'
 import { renderMarkdown } from '../utils/markdown'
+import ModelSelect from '../components/ModelSelect.vue'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -697,6 +707,7 @@ const form = reactive({
   style: 'literary',
   length: 'medium',
   extraInstruction: '',
+  modelName: localStorage.getItem('tavern-chat-model') || 'deepseek-v4.1-flash',
 })
 
 const formTypes = [

@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI角色酒馆</title>
+    <script>
+      // 首屏前定主题：localStorage 记住的偏好优先，默认暗色。
+      // 必须内联在 main.js 之前执行，否则刷新时主题切换会闪一次屏。
+      ;(function () {
+        try {
+          var t = localStorage.getItem('tavern-theme')
+          if (t === 'light') document.documentElement.classList.remove('dark')
+          else document.documentElement.classList.add('dark')
+        } catch (e) {
+          document.documentElement.classList.add('dark')
+        }
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

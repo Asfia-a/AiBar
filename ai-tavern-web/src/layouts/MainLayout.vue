@@ -72,6 +72,17 @@
 
           <div class="flex-1" />
 
+          <!-- 主题切换：暗 / 亮跟随整套设计令牌，偏好存 localStorage -->
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button variant="ghost" size="icon-sm" @click="toggleTheme">
+                <Sun v-if="theme === 'dark'" class="size-4" />
+                <Moon v-else class="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{{ theme === 'dark' ? '切换到亮色' : '切换到暗色' }}</TooltipContent>
+          </Tooltip>
+
           <!-- 右侧操作 -->
           <Tooltip>
             <TooltipTrigger as-child>
@@ -218,13 +229,16 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Moon,
   PenLine,
   Search,
   Sparkles,
+  Sun,
   TreePine,
   UserRound,
   Users,
 } from 'lucide-vue-next'
+import { theme, toggleTheme } from '../theme'
 import { useAuthStore } from '../stores/auth'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -271,6 +285,7 @@ function onWindowScroll() {
 
 const primaryNav = [
   { to: '/', label: '角色广场', name: 'Home' },
+  { to: '/worlds', label: '世界广场', name: 'WorldPlaza' },
   { to: '/chat', label: '对话', name: 'Chat' },
   { to: '/community', label: '社区', name: 'Community' },
 ]
@@ -287,6 +302,7 @@ const createNav = [
 const accountNav = [
   { to: '/profile', label: '个人资料', name: 'Profile', icon: UserRound },
   { to: '/mine', label: '我的角色', name: 'MyCharacters', icon: LayoutGrid },
+  { to: '/my-worlds', label: '我的世界树', name: 'MyWorldTrees', icon: TreePine },
   { to: '/favorites', label: '我的收藏', name: 'Favorites', icon: Bookmark },
   { to: '/checkin', label: '每日签到', name: 'CheckIn', icon: CalendarCheck },
 ]
@@ -294,6 +310,7 @@ const accountNav = [
 // 移动端把桌面端「主航 + 创作 + 账号」三组拍平成一个抽屉，顺序与桌面一致
 const allMobileNav = [
   { to: '/', label: '角色广场', name: 'Home', icon: LayoutGrid },
+  { to: '/worlds', label: '世界广场', name: 'WorldPlaza', icon: TreePine },
   { to: '/chat', label: '对话', name: 'Chat', icon: MessageSquare },
   { to: '/community', label: '社区', name: 'Community', icon: Users },
   ...createNav,

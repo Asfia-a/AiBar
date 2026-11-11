@@ -65,6 +65,20 @@
           充值
         </Button>
 
+        <!-- 人设 / 记忆入口：有内容时高亮，方便一眼看到「你是谁、记着什么」 -->
+        <Button
+          v-if="sessionId"
+          variant="ghost"
+          size="icon-sm"
+          :title="hasPersonaOrMemory ? '我与记忆（已生效）' : '我与记忆'"
+          @click="personaMemoryOpen = true"
+        >
+          <UserRound
+            class="size-4"
+            :class="hasPersonaOrMemory ? 'text-foreground' : 'opacity-70'"
+          />
+        </Button>
+
         <!-- 作者注释生效时给个显式标记，否则用户会忘记自己设过 -->
         <Button
           v-if="sessionId && hasAuthorNote"
@@ -94,6 +108,10 @@
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem class="cursor-pointer" @select="personaMemoryOpen = true">
+              <UserRound class="size-4 opacity-70" />
+              我与记忆
+            </DropdownMenuItem>
             <DropdownMenuItem class="cursor-pointer" @select="authorNoteOpen = true">
               <StickyNote class="size-4 opacity-70" />
               作者注释
@@ -122,11 +140,19 @@
           <p class="mt-1.5 max-w-sm text-sm text-muted-foreground">
             {{
               sessionId
-                ? '你的每一句话都会被记住，也会按 Token 计入积分。'
+                ? hasPersonaOrMemory
+                  ? '人设与记忆已就绪。开聊后早期剧情会自动压成摘要，角色不容易失忆。'
+                  : '建议先点右上角「我与记忆」写上你是谁——角色会按这个身份对你说话。'
                 : '从角色广场挑一个角色进入对话，或从左侧打开历史会话。'
             }}
           </p>
-          <Button v-if="!sessionId" variant="outline" class="mt-5" @click="router.push('/')">
+          <div v-if="sessionId && !hasPersonaOrMemory" class="mt-5">
+            <Button variant="outline" @click="personaMemoryOpen = true">
+              <UserRound class="size-4" />
+              设置我的人设
+            </Button>
+          </div>
+          <Button v-else-if="!sessionId" variant="outline" class="mt-5" @click="router.push('/')">
             去角色广场
           </Button>
         </div>
@@ -182,8 +208,21 @@
                 @click="selecting && toggleSelect(m)"
               >
                 <span v-if="m.role === 'user'">{{ m.content }}</span>
-                <!-- 模型输出带 markdown，解析后渲染；原始 HTML 已在 renderMarkdown 中丢弃 -->
-                <div v-else class="chat-md" v-html="renderMarkdown(m.content)" />
+                <template v-else>
+                  <!-- 思考链：默认折叠，流式时若已有内容自动展开 -->
+                  <details
+                    v-if="messageReasoning(m)"
+                    class="mb-2 rounded-lg border border-border/50 bg-secondary/40 px-2.5 py-1.5 text-xs text-muted-foreground"
+                    :open="m._streaming && !!messageReasoning(m)"
+                  >
+                    <summary class="cursor-pointer select-none text-[11px] font-medium tracking-wide text-muted-foreground/90">
+                      思考过程
+                    </summary>
+                    <pre class="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-muted-foreground">{{ messageReasoning(m) }}</pre>
+                  </details>
+                  <!-- 模型输出带 markdown，解析后渲染；原始 HTML 已在 renderMarkdown 中丢弃 -->
+                  <div class="chat-md" v-html="renderMarkdown(m.content)" />
+                </template>
                 <span v-if="m._streaming" class="stream-caret">▍</span>
               </div>
 
@@ -245,6 +284,17 @@
                 >
                   <GitBranch class="size-3" />
                 </Button>
+                <Button
+                  v-if="m.id && !streaming && !selecting"
+                  variant="ghost"
+                  size="xs"
+                  class="h-7 gap-1 px-2 text-destructive hover:text-destructive"
+                  title="删除本轮：用户消息 + 助手回复，并从模型上下文移除"
+                  @click="askDeleteRound(m)"
+                >
+                  <Trash2 class="size-3" />
+                  删本轮
+                </Button>
               </div>
             </div>
           </div>
@@ -288,8 +338,24 @@
               <span v-if="ctxMeta.droppedRounds > 0" class="text-foreground/70">
                 · 已丢弃 {{ ctxMeta.droppedRounds }} 条更早的消息
               </span>
+              <span v-if="ctxMeta.hasMemory" class="text-foreground/70"> · 已注入剧情摘要</span>
+              <span v-if="ctxMeta.hasPersona" class="text-foreground/70"> · 人设生效</span>
               <span class="opacity-70"> · 约 {{ ctxMeta.estimatedTokens }} tokens 输入</span>
             </p>
+            <!-- 本轮世界书命中：不抢戏，只轻轻标一下 -->
+            <div
+              v-if="activatedEntries.length"
+              class="mt-1.5 flex flex-wrap items-center gap-1.5"
+              title="本轮提示词里插入了这些世界书条目"
+            >
+              <BookMarked class="size-3 shrink-0 text-muted-foreground" />
+              <span class="text-[10px] text-muted-foreground">本轮命中</span>
+              <span
+                v-for="title in activatedEntries"
+                :key="title"
+                class="rounded-md bg-secondary px-1.5 py-0.5 text-[10px] text-foreground/80"
+              >{{ title }}</span>
+            </div>
           </div>
 
           <div class="rounded-2xl border border-border/80 bg-card p-2 transition-shadow focus-within:border-ring/60 focus-within:shadow-[0_0_0_4px_rgba(228,196,137,0.10)]">
@@ -303,9 +369,83 @@
               @keydown.enter.exact.prevent="send"
             />
             <div class="flex items-center justify-between gap-2 px-1 pt-1">
-              <span class="text-[11px] text-muted-foreground">
-                {{ streaming ? '对方正在回应…' : ctxMeta ? `上下文约 ${ctxMeta.estimatedTokens} tokens` : '温柔一点，角色会记得' }}
-              </span>
+              <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+                <!-- 模型选择：放输入区更显眼，按厂商分组，列表可滚动 -->
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      class="h-7 max-w-[14rem] shrink-0 gap-1 px-2"
+                      :disabled="modelSaving || streaming"
+                      title="切换对话模型（Key 在服务端，这里只选模型名）"
+                    >
+                      <Cpu class="size-3.5 shrink-0 opacity-70" />
+                      <span class="truncate">{{ currentModelLabel }}</span>
+                      <ChevronsUpDown class="size-3 shrink-0 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" class="w-72 p-1">
+                    <DropdownMenuLabel class="text-xs text-muted-foreground">
+                      选择模型 · {{ chatModels.length }} 个
+                    </DropdownMenuLabel>
+                    <div class="max-h-72 overflow-y-auto py-1">
+                      <template v-for="(group, gi) in modelGroups" :key="group.key">
+                        <DropdownMenuSeparator v-if="gi > 0" />
+                        <DropdownMenuLabel class="text-[10px] tracking-wide text-muted-foreground uppercase">
+                          {{ group.label }}
+                        </DropdownMenuLabel>
+                        <DropdownMenuRadioGroup
+                          :model-value="selectedModel"
+                          @update:model-value="onModelChange"
+                        >
+                          <DropdownMenuRadioItem
+                            v-for="m in group.models"
+                            :key="m.id"
+                            :value="m.id"
+                            class="cursor-pointer items-start py-2"
+                          >
+                            <div class="flex min-w-0 flex-col gap-0.5">
+                              <span class="truncate">{{ m.label }}</span>
+                              <span class="truncate font-mono text-[10px] font-normal text-muted-foreground">
+                                {{ m.id }}
+                              </span>
+                            </div>
+                          </DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                      </template>
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button
+                  v-if="supportsThinking"
+                  variant="ghost"
+                  size="xs"
+                  class="h-7 shrink-0 gap-1 px-2"
+                  :class="thinkingEnabled ? 'text-foreground' : 'text-muted-foreground'"
+                  :title="thinkingEnabled ? '思考模式开：会展示推理过程，稍慢' : '思考模式关：更快更稳（推荐扮演）'"
+                  :disabled="streaming"
+                  @click="toggleThinking"
+                >
+                  <Brain class="size-3.5" />
+                  {{ thinkingEnabled ? '思考开' : '思考关' }}
+                </Button>
+                <span class="truncate text-[11px] text-muted-foreground">
+                  {{ streaming ? '对方正在回应…' : ctxMeta ? `上下文约 ${ctxMeta.estimatedTokens} tokens` : '选模型后开聊' }}
+                </span>
+                <Button
+                  v-if="lastRoundAnchor && !streaming && !selecting"
+                  variant="ghost"
+                  size="xs"
+                  class="h-7 shrink-0 gap-1 px-2 text-muted-foreground hover:text-destructive"
+                  title="删除最近一轮用户提问与助手回复，并从模型上下文移除"
+                  @click="askDeleteRound(lastRoundAnchor)"
+                >
+                  <Undo2 class="size-3.5" />
+                  撤销上一轮
+                </Button>
+              </div>
               <Button
                 v-if="streaming"
                 variant="secondary"
@@ -356,6 +496,11 @@
     <MockRechargeDialog v-model="rechargeOpen" prefer="basic" @success="onRecharged" />
 
     <AuthorNotePanel v-model:open="authorNoteOpen" :session-id="sessionId" @saved="refreshSessions" />
+    <PersonaMemoryPanel
+      v-model:open="personaMemoryOpen"
+      :session-id="sessionId"
+      @saved="onPersonaMemorySaved"
+    />
 
     <!-- 编辑消息：改文本不重新生成，也不额外扣积分 -->
     <Dialog v-model:open="editOpen">
@@ -403,6 +548,27 @@
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- 删除本轮确认 -->
+    <Dialog v-model:open="roundDeleteOpen">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>删除这一轮对话？</DialogTitle>
+          <DialogDescription>
+            会删掉用户消息和对应的助手回复（共约 {{ roundPreviewCount }} 条）。
+            删除后不会再进入上下文，下一轮生成时 AI 会「忘掉」它们。不可恢复。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter class="flex-row justify-end gap-2">
+          <Button variant="outline" :disabled="deleting" @click="roundDeleteOpen = false">取消</Button>
+          <Button variant="destructive" :disabled="deleting || !roundTargetId" @click="confirmDeleteRound">
+            <Loader2 v-if="deleting" class="size-4 animate-spin" />
+            <Trash2 v-else class="size-4" />
+            删除本轮
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
@@ -412,11 +578,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import {
   ArrowUp,
+  BookMarked,
+  Brain,
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronsUpDown,
   Coins,
   Copy,
+  Cpu,
   GitBranch,
   Heart,
   ListChecks,
@@ -430,16 +600,21 @@ import {
   Square,
   StickyNote,
   Trash2,
+  Undo2,
+  UserRound,
 } from 'lucide-vue-next'
 import {
   branchSession,
   createSession,
   deleteMessages,
+  deleteRound,
   deleteSession,
   editMessage,
+  getChatModels,
   getMessages,
   getSessions,
   selectSwipe,
+  setSessionModel,
   streamChat,
   streamSwipe,
 } from '../api/chat'
@@ -449,6 +624,7 @@ import { useAuthStore } from '../stores/auth'
 import { renderMarkdown } from '../utils/markdown'
 import MockRechargeDialog from '../components/MockRechargeDialog.vue'
 import AuthorNotePanel from '../components/chat/AuthorNotePanel.vue'
+import PersonaMemoryPanel from '../components/chat/PersonaMemoryPanel.vue'
 import SessionList from '../components/chat/SessionList.vue'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -465,6 +641,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -494,6 +674,9 @@ const tokensPerPoint = ref(1000)
 const rechargeOpen = ref(false)
 const mobileSessionsOpen = ref(false)
 const authorNoteOpen = ref(false)
+const personaMemoryOpen = ref(false)
+/** 人设 / 摘要是否已有内容（会话列表字段或本轮 meta） */
+const personaMemoryHint = ref({ persona: false, memory: false })
 const editOpen = ref(false)
 const editTarget = ref(null)
 const editText = ref('')
@@ -503,13 +686,86 @@ const selecting = ref(false)
 const selectedIds = ref([])
 const deleteOpen = ref(false)
 const deleting = ref(false)
+/** 删除本轮：以某条消息为锚点，连同配对的用户/助手一起删 */
+const roundDeleteOpen = ref(false)
+const roundTargetId = ref(null)
+const roundPreviewCount = ref(2)
 /** 用户是否贴在底部：贴底才自动跟随流式输出，否则不打断向上翻阅 */
 const stickToBottom = ref(true)
+/** 与后端 AiModelService.CHAT_MODELS 对齐；接口失败时也能切全量 */
+const FALLBACK_CHAT_MODELS = [
+  { id: 'deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash', description: '默认推荐' },
+  { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', description: '上一代 Flash' },
+  { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', description: '更强能力' },
+  { id: 'deepseek-v3.2', label: 'DeepSeek V3.2', description: '经典 DeepSeek' },
+  { id: 'gemini-3-flash', label: 'Gemini 3 Flash', description: 'Google' },
+  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', description: 'Google' },
+  { id: 'gemini-4-argon', label: 'Gemini 4 Argon', description: 'Google' },
+  { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', description: 'Anthropic' },
+  { id: 'glm-5.3', label: 'GLM 5.3', description: '智谱' },
+  { id: 'glm-5.3-flash', label: 'GLM 5.3 Flash', description: '智谱' },
+  { id: 'kimi-k3', label: 'Kimi K3', description: '月之暗面' },
+]
+const chatModels = ref([...FALLBACK_CHAT_MODELS])
+const defaultModel = ref('deepseek-v4.1-flash')
+const selectedModel = ref(localStorage.getItem('tavern-chat-model') || 'deepseek-v4.1-flash')
+const modelSaving = ref(false)
+
+const MODEL_GROUP_DEFS = [
+  { key: 'deepseek', label: 'DeepSeek', match: (id) => id.startsWith('deepseek') },
+  { key: 'gemini', label: 'Gemini', match: (id) => id.startsWith('gemini') },
+  { key: 'claude', label: 'Claude', match: (id) => id.startsWith('claude') },
+  { key: 'glm', label: '智谱 GLM', match: (id) => id.startsWith('glm') },
+  { key: 'kimi', label: 'Kimi', match: (id) => id.startsWith('kimi') },
+]
+
+const modelGroups = computed(() => {
+  const list = chatModels.value || []
+  const groups = MODEL_GROUP_DEFS.map((g) => ({
+    key: g.key,
+    label: g.label,
+    models: list.filter((m) => g.match(String(m.id || ''))),
+  })).filter((g) => g.models.length > 0)
+  const used = new Set(groups.flatMap((g) => g.models.map((m) => m.id)))
+  const other = list.filter((m) => !used.has(m.id))
+  if (other.length) {
+    groups.push({ key: 'other', label: '其它', models: other })
+  }
+  return groups
+})
+/** DeepSeek 思考模式：默认关（扮演更稳）；开了会多一段可折叠「思考过程」 */
+const thinkingEnabled = ref(localStorage.getItem('tavern-thinking') === '1')
 let suppressLoad = false
 let abortCtrl = null
 
 const sessionId = computed(() => route.params.sessionId)
 const current = computed(() => sessions.value.find((s) => isCurrent(s.id)))
+
+const currentModelLabel = computed(() => {
+  const hit = chatModels.value.find((m) => m.id === selectedModel.value)
+  return hit?.label || selectedModel.value || '选择模型'
+})
+
+/** 思考开关只对 DeepSeek 有意义；其它模型网关可能直接 400 */
+const supportsThinking = computed(() =>
+  String(selectedModel.value || '').toLowerCase().startsWith('deepseek'),
+)
+
+const activatedEntries = computed(() => {
+  const list = ctxMeta.value?.activatedEntries
+  return Array.isArray(list) ? list.filter((t) => t != null && String(t).trim() !== '') : []
+})
+
+function messageReasoning(m) {
+  return (m?.reasoning || m?._reasoning || '').trim()
+}
+
+function toggleThinking() {
+  if (!supportsThinking.value) return
+  thinkingEnabled.value = !thinkingEnabled.value
+  localStorage.setItem('tavern-thinking', thinkingEnabled.value ? '1' : '0')
+  toast.message(thinkingEnabled.value ? '已开启思考模式' : '已关闭思考模式')
+}
 
 const characterId = computed(() => {
   const id = current.value?.characterId ?? current.value?.character_id ?? route.query.characterId
@@ -520,7 +776,12 @@ const characterName = computed(
   () => current.value?.characterName || current.value?.title || '酒馆',
 )
 
-const userName = computed(() => authStore.user?.nickname || authStore.user?.username || '我')
+/** 气泡上的称呼：会话人设名优先，和提示词里的 {{user}} 一致 */
+const userName = computed(() => {
+  const persona = current.value?.personaName ?? current.value?.persona_name
+  if (persona && String(persona).trim()) return String(persona).trim()
+  return authStore.user?.nickname || authStore.user?.username || '我'
+})
 
 /** 会话列表里已经带了 author_note / an_frequency，直接用，不额外请求 */
 const hasAuthorNote = computed(() => {
@@ -530,6 +791,39 @@ const hasAuthorNote = computed(() => {
   const freq = s.anFrequency ?? s.an_frequency
   return !!note && String(note).trim() !== '' && (freq == null || Number(freq) > 0)
 })
+
+const hasPersonaOrMemory = computed(() => {
+  const s = current.value
+  if (personaMemoryHint.value.persona || personaMemoryHint.value.memory) return true
+  if (!s) return false
+  const name = s.personaName ?? s.persona_name
+  const desc = s.personaDesc ?? s.persona_desc
+  const mem = s.memorySummary ?? s.memory_summary
+  const memOn = s.memoryEnabled ?? s.memory_enabled
+  const personaOn = !!(name && String(name).trim()) || !!(desc && String(desc).trim())
+  const memoryOn =
+    !!(mem && String(mem).trim()) && (memOn == null || Number(memOn) === 1)
+  return personaOn || memoryOn
+})
+
+function syncPersonaMemoryHintFromSession(session) {
+  if (!session) {
+    personaMemoryHint.value = { persona: false, memory: false }
+    return
+  }
+  const name = session.personaName ?? session.persona_name
+  const desc = session.personaDesc ?? session.persona_desc
+  const mem = session.memorySummary ?? session.memory_summary
+  const memOn = session.memoryEnabled ?? session.memory_enabled
+  personaMemoryHint.value = {
+    persona: !!(name && String(name).trim()) || !!(desc && String(desc).trim()),
+    memory: !!(mem && String(mem).trim()) && (memOn == null || Number(memOn) === 1),
+  }
+}
+
+function onPersonaMemorySaved() {
+  refreshSessions()
+}
 
 const bgUrl = computed(() => {
   const url = current.value?.characterAvatar || current.value?.character_avatar || ''
@@ -596,6 +890,11 @@ async function onRecharged(res) {
 
 async function refreshSessions() {
   sessions.value = (await getSessions()) || []
+  const cur = sessions.value.find((s) => isCurrent(s.id))
+  if (cur) {
+    syncModelFromSession(cur)
+    syncPersonaMemoryHintFromSession(cur)
+  }
 }
 
 async function loadFavoriteState() {
@@ -655,12 +954,67 @@ function openSessionFromDrawer(id) {
   openSession(id)
 }
 
+async function loadChatModels() {
+  try {
+    const data = await getChatModels()
+    if (Array.isArray(data?.models) && data.models.length) {
+      chatModels.value = data.models
+    }
+    if (data?.defaultModel) {
+      defaultModel.value = data.defaultModel
+      if (!chatModels.value.some((m) => m.id === selectedModel.value)) {
+        selectedModel.value = data.defaultModel
+      }
+    }
+  } catch {
+    /* 用本地兜底列表 */
+  }
+}
+
+function syncModelFromSession(session) {
+  if (!session) return
+  const name = session.modelName ?? session.model_name
+  if (name && chatModels.value.some((m) => m.id === name)) {
+    selectedModel.value = name
+    localStorage.setItem('tavern-chat-model', name)
+  } else if (!name) {
+    selectedModel.value = defaultModel.value
+  }
+}
+
+async function onModelChange(id) {
+  if (!id || id === selectedModel.value) return
+  const prev = selectedModel.value
+  selectedModel.value = id
+  localStorage.setItem('tavern-chat-model', id)
+  const label = chatModels.value.find((m) => m.id === id)?.label || id
+  if (!sessionId.value) {
+    toast.success(`已选择 ${label}（开聊后生效）`)
+    return
+  }
+  modelSaving.value = true
+  try {
+    await setSessionModel(sessionId.value, id)
+    await refreshSessions()
+    toast.success(`已切换到 ${label}`)
+  } catch (e) {
+    selectedModel.value = prev
+    localStorage.setItem('tavern-chat-model', prev)
+    toast.error(e?.message || '切换模型失败')
+  } finally {
+    modelSaving.value = false
+  }
+}
+
 async function ensureSession(cid) {
   const list = sessions.value.length ? sessions.value : ((await getSessions()) || [])
   sessions.value = list
   const existing = list.find((s) => Number(s.characterId ?? s.character_id) === Number(cid))
-  if (existing) return existing
-  return createSession({ characterId: Number(cid) })
+  if (existing) {
+    syncModelFromSession(existing)
+    return existing
+  }
+  return createSession({ characterId: Number(cid), modelName: selectedModel.value })
 }
 
 function appendByTmp(tmpId, chunk) {
@@ -669,6 +1023,20 @@ function appendByTmp(tmpId, chunk) {
   if (idx < 0) return
   const cur = messages.value[idx]
   messages.value[idx] = { ...cur, content: (cur.content || '') + chunk, _streaming: true }
+  if (stickToBottom.value) scrollBottom()
+}
+
+function appendReasoningByTmp(tmpId, chunk) {
+  if (!chunk) return
+  const idx = messages.value.findIndex((m) => m._tmp === tmpId)
+  if (idx < 0) return
+  const cur = messages.value[idx]
+  messages.value[idx] = {
+    ...cur,
+    reasoning: (cur.reasoning || '') + chunk,
+    _reasoning: (cur._reasoning || cur.reasoning || '') + chunk,
+    _streaming: true,
+  }
   if (stickToBottom.value) scrollBottom()
 }
 
@@ -730,7 +1098,13 @@ async function send() {
   const userTmp = `u-${Date.now()}`
   const assistantTmp = `a-${Date.now()}`
   messages.value.push({ role: 'user', content: text, _tmp: userTmp })
-  messages.value.push({ role: 'assistant', content: '', _tmp: assistantTmp, _streaming: true })
+  messages.value.push({
+    role: 'assistant',
+    content: '',
+    reasoning: '',
+    _tmp: assistantTmp,
+    _streaming: true,
+  })
   streaming.value = true
   stickToBottom.value = true
   abortCtrl = new AbortController()
@@ -739,12 +1113,21 @@ async function send() {
   try {
     await streamChat(
       sid,
-      { message: text },
+      { message: text, thinking: thinkingEnabled.value },
       {
-        onChunk: ({ content, meta }) => {
-          // meta 里带上下文裁剪统计，用来画占用条
-          if (meta) ctxMeta.value = meta
-          appendByTmp(assistantTmp, content)
+        onChunk: ({ content, reasoning, meta }) => {
+          // meta 里带上下文裁剪统计，用来画占用条 / 世界书命中
+          if (meta) {
+            ctxMeta.value = meta
+            if (meta.hasPersona != null || meta.hasMemory != null) {
+              personaMemoryHint.value = {
+                persona: !!meta.hasPersona || personaMemoryHint.value.persona,
+                memory: !!meta.hasMemory || personaMemoryHint.value.memory,
+              }
+            }
+          }
+          if (reasoning) appendReasoningByTmp(assistantTmp, reasoning)
+          if (content) appendByTmp(assistantTmp, content)
         },
         onDone: async () => {
           stopStreamingFlag(assistantTmp)
@@ -783,9 +1166,14 @@ async function newSwipe(m) {
     return
   }
 
-  const backup = { content: m.content, index: m.swipeIndex || 0 }
+  const backup = {
+    content: m.content,
+    reasoning: m.reasoning || '',
+    index: m.swipeIndex || 0,
+  }
   streaming.value = true
   m.content = ''
+  m.reasoning = ''
   m._streaming = true
   stickToBottom.value = true
   abortCtrl = new AbortController()
@@ -793,33 +1181,42 @@ async function newSwipe(m) {
 
   const restore = () => {
     m.content = backup.content
+    m.reasoning = backup.reasoning
     m.swipeIndex = backup.index
     m._streaming = false
     streaming.value = false
   }
 
   try {
-    await streamSwipe(m.id, {
-      onChunk: ({ content, meta }) => {
-        if (meta) ctxMeta.value = meta
-        if (content) {
-          m.content += content
-          if (stickToBottom.value) scrollBottom()
-        }
+    await streamSwipe(
+      m.id,
+      {
+        onChunk: ({ content, reasoning, meta }) => {
+          if (meta) ctxMeta.value = meta
+          if (reasoning) {
+            m.reasoning = (m.reasoning || '') + reasoning
+            if (stickToBottom.value) scrollBottom()
+          }
+          if (content) {
+            m.content += content
+            if (stickToBottom.value) scrollBottom()
+          }
+        },
+        onDone: async () => {
+          m._streaming = false
+          streaming.value = false
+          await loadMessages()
+          await refreshSessions()
+          await refreshTokenBalance()
+        },
+        onError: (e) => {
+          restore()
+          toast.error(e?.message || '再生成失败')
+        },
+        signal: abortCtrl.signal,
       },
-      onDone: async () => {
-        m._streaming = false
-        streaming.value = false
-        await loadMessages()
-        await refreshSessions()
-        await refreshTokenBalance()
-      },
-      onError: (e) => {
-        restore()
-        toast.error(e?.message || '再生成失败')
-      },
-      signal: abortCtrl.signal,
-    })
+      { thinking: thinkingEnabled.value },
+    )
   } catch (e) {
     if (e?.name === 'AbortError') {
       // 用户主动停止：保留已收到的半截，重新拉一次拿真实的版本号
@@ -842,6 +1239,7 @@ async function switchSwipe(m, index) {
   try {
     const res = await selectSwipe(m.id, index)
     m.content = res?.content ?? m.content
+    m.reasoning = res?.reasoning ?? ''
     m.swipeIndex = res?.swipeIndex ?? index
     m.swipeCount = res?.swipeCount ?? count
   } catch (e) {
@@ -951,6 +1349,62 @@ async function confirmDeleteSelected() {
   }
 }
 
+/** 预览本轮会删掉哪些 id（仅前端提示；真正配对以后端为准） */
+function previewRoundIds(m) {
+  if (!m?.id) return []
+  const list = messages.value.filter((x) => x.id != null)
+  const idx = list.findIndex((x) => x.id === m.id)
+  if (idx < 0) return [m.id]
+  const ids = [m.id]
+  if (m.role === 'user') {
+    const next = list[idx + 1]
+    if (next?.role === 'assistant') ids.push(next.id)
+  } else if (m.role === 'assistant') {
+    const prev = list[idx - 1]
+    if (prev?.role === 'user') ids.unshift(prev.id)
+  }
+  return ids
+}
+
+/** 输入框旁「撤销上一轮」：锚定最近一条有 id 的助手消息（或用户消息） */
+const lastRoundAnchor = computed(() => {
+  const list = messages.value.filter((x) => x.id != null && !x._tmp)
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i]
+    if (m.role === 'assistant' || m.role === 'user') return m
+  }
+  return null
+})
+
+function askDeleteRound(m) {
+  if (streaming.value) {
+    toast.warning('请等待当前回复完成')
+    return
+  }
+  if (!m?.id) return
+  roundTargetId.value = m.id
+  roundPreviewCount.value = previewRoundIds(m).length
+  roundDeleteOpen.value = true
+}
+
+async function confirmDeleteRound() {
+  if (!roundTargetId.value || deleting.value || !sessionId.value) return
+  deleting.value = true
+  try {
+    const res = await deleteRound(sessionId.value, roundTargetId.value)
+    const n = res?.deleted ?? res?.roundIds?.length ?? roundPreviewCount.value
+    toast.success(`已删除本轮 ${n} 条，之后不会再进入上下文`)
+    roundDeleteOpen.value = false
+    roundTargetId.value = null
+    await loadMessages()
+    await refreshSessions()
+  } catch (e) {
+    toast.error(e?.message || '删除本轮失败')
+  } finally {
+    deleting.value = false
+  }
+}
+
 /** 输入框随内容长高，最多 160px */
 function autoResize() {
   const el = inputRef.value
@@ -973,11 +1427,14 @@ async function scrollBottom() {
 watch(sessionId, (id, prev) => {
   if (streaming.value || suppressLoad) return
   if (String(id) === String(prev)) return
+  const cur = sessions.value.find((s) => isCurrent(s.id))
+  syncModelFromSession(cur)
   loadMessages()
 })
 watch(characterId, loadFavoriteState, { immediate: true })
 
 onMounted(async () => {
+  await loadChatModels()
   await refreshSessions()
   await refreshTokenBalance()
   if (route.query.characterId && !sessionId.value) {

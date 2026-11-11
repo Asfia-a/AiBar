@@ -70,14 +70,37 @@ public class CharacterService {
     /**
      * 热门角色列表缓存，TTL 短一些，兼顾性能和新鲜度。
      * 每次调用都会往埋点流水里记一条，管理端的命中率对比图读的就是它。
+     * <p>读出后仍过滤 status=2：下架与缓存回填存在竞态时，防止已下架角色继续出现在首页热门。
      */
     public List<CharacterCard> hot(int limit) {
-        return cacheService.getList(RedisConstant.HOT_CHARACTERS, "hot-characters",
-                CharacterCard.class, () -> {
-                    List<CharacterCard> list = characterMapper.hot(limit);
-                    fillTags(list);
-                    return list;
-                });
+        List<CharacterCard> cached = cacheService.getList(RedisConstant.HOT_CHARACTERS, "hot-characters",
+                CharacterCard.class, () -> loadHotFromDb(limit));
+        List<CharacterCard> online = filterOnline(cached);
+        if (cached != null && online.size() != cached.size()) {
+            // 缓存里混进了下架角色（竞态写回），立刻失效并回源，避免列表空洞
+            cacheService.evict(RedisConstant.HOT_CHARACTERS);
+            return loadHotFromDb(limit);
+        }
+        return online;
+    }
+
+    private List<CharacterCard> loadHotFromDb(int limit) {
+        List<CharacterCard> list = characterMapper.hot(limit);
+        fillTags(list);
+        return list;
+    }
+
+    private static List<CharacterCard> filterOnline(List<CharacterCard> list) {
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        List<CharacterCard> online = new ArrayList<>(list.size());
+        for (CharacterCard c : list) {
+            if (c != null && c.getStatus() != null && c.getStatus() == 2) {
+                online.add(c);
+            }
+        }
+        return online;
     }
 
     public List<CharacterCard> newest(int limit) {
@@ -166,6 +189,7 @@ public class CharacterService {
         copy.setPersonality(src.getPersonality());
         copy.setBackgroundStory(src.getBackgroundStory());
         copy.setExampleDialogue(src.getExampleDialogue());
+        copy.setPostHistory(src.getPostHistory());
         copy.setGreeting(src.getGreeting());
         copy.setCreatorId(userId);
         copy.setCategoryId(src.getCategoryId());
@@ -253,6 +277,8 @@ public class CharacterService {
         }
         // status: 2通过 4驳回 3下架
         characterMapper.updateStatus(characterId, status);
+        // 下架/驳回/通过都会改广场可见性，必须清掉热门缓存，否则首页还会冒出旧列表
+        evictCharacterCaches();
         String title = switch (status) {
             case 2 -> "角色审核通过";
             case 4 -> "角色审核驳回";
@@ -372,6 +398,7 @@ public class CharacterService {
         card.setPersonality(req.getPersonality());
         card.setBackgroundStory(req.getBackgroundStory());
         card.setExampleDialogue(req.getExampleDialogue());
+        card.setPostHistory(normalizePostHistory(req.getPostHistory()));
         card.setGreeting(req.getGreeting());
         card.setCategoryId(resolveCategoryId(req.getCategoryId(), req.getCategoryName()));
         card.setTemperature(req.getTemperature());
@@ -392,6 +419,19 @@ public class CharacterService {
      *  - 惩罚类越界 → 夹到合法区间；恰好是中性值 → null，避免往请求里塞无用字段
      *  - 停止词超长 → 截断，避免撑爆 varchar(255)
      */
+    /** 收尾指令的入库口径：空白当没填；超长截断（与作者注释同一上限），别把上下文窗口挤爆 */
+    private static final int MAX_POST_HISTORY_CHARS = 2000;
+
+    private static String normalizePostHistory(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String text = raw.trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        return text.length() > MAX_POST_HISTORY_CHARS ? text.substring(0, MAX_POST_HISTORY_CHARS) : text;
+    }
     private static Integer normalizeTopK(Integer topK) {
         if (topK == null || topK <= 0) {
             return null;
@@ -451,6 +491,8 @@ public class CharacterService {
 
     public void evictHotCache() {
         cacheService.evict(RedisConstant.HOT_CHARACTERS);
+        // 兼容旧共用键 character:hot（曾与热度 ZSet 撞车）
+        cacheService.evict(RedisConstant.CHARACTER_HOT_LEGACY);
     }
 
     /** 角色数据变动后统一失效，避免各处漏调导致缓存里留着旧数据 */

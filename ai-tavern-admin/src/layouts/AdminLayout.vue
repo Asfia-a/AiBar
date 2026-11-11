@@ -7,7 +7,6 @@ import {
   User,
   DocumentChecked,
   Warning,
-  Setting,
   SwitchButton,
 } from '@element-plus/icons-vue'
 
@@ -20,7 +19,7 @@ const menuItems = [
   { path: '/character-audit', title: '角色审核', icon: DocumentChecked },
   { path: '/user-manage', title: '用户管理', icon: User },
   { path: '/content-audit', title: '违规日志', icon: Warning },
-  { path: '/model-config', title: '模型配置', icon: Setting },
+  // 模型密钥在配置文件；用户在聊天页选模型。此页仅只读摘要，不进主菜单
 ]
 
 const activeMenu = computed(() => route.path)

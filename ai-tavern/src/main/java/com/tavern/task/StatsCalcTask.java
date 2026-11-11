@@ -25,7 +25,12 @@ public class StatsCalcTask {
         try {
             characterMapper.recalcAllHotScore();
             List<CharacterCard> list = characterMapper.listHotScores();
-            stringRedisTemplate.delete(RedisConstant.CHARACTER_HOT);
+            // ZSet / 列表缓存 / 旧共用键三者分开清理，避免类型互相踩踏
+            stringRedisTemplate.delete(List.of(
+                    RedisConstant.CHARACTER_HOT,
+                    RedisConstant.HOT_CHARACTERS,
+                    RedisConstant.CHARACTER_HOT_LEGACY
+            ));
             for (CharacterCard c : list) {
                 if (c.getHotScore() != null) {
                     stringRedisTemplate.opsForZSet().add(

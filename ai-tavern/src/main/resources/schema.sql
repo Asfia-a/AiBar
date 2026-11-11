@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS t_character (
     personality     TEXT,
     background_story TEXT,
     example_dialogue TEXT COMMENT 'JSON',
+    post_history    TEXT COMMENT 'Post-History Instructions，收尾强指令；空=不追加',
     greeting        TEXT,
     creator_id      BIGINT NOT NULL,
     category_id     BIGINT,
@@ -96,6 +97,7 @@ CREATE TABLE IF NOT EXISTS t_chat_message (
     session_id  BIGINT NOT NULL,
     role        VARCHAR(10) NOT NULL COMMENT 'user/assistant/system',
     content     TEXT NOT NULL,
+    reasoning   MEDIUMTEXT NULL COMMENT '思考过程（DeepSeek reasoning_content）',
     tokens      INT DEFAULT 0,
     swipe_count INT DEFAULT 1 COMMENT '共几条备选回复（含当前这条）',
     swipe_index INT DEFAULT 0 COMMENT '当前展示第几条，从 0 开始',
@@ -109,6 +111,7 @@ CREATE TABLE IF NOT EXISTS t_message_swipe (
     message_id  BIGINT NOT NULL,
     idx         INT NOT NULL DEFAULT 0 COMMENT '版本序号，0 是第一次生成',
     content     TEXT NOT NULL,
+    reasoning   MEDIUMTEXT NULL COMMENT '该版本的思考过程',
     tokens      INT DEFAULT 0,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_message_idx (message_id, idx),
@@ -313,6 +316,18 @@ ALTER TABLE t_chat_session
     ADD COLUMN author_note  TEXT COMMENT '作者注释内容',
     ADD COLUMN an_depth     INT DEFAULT 0 COMMENT '0=历史末尾，N=倒数第 N 条之前',
     ADD COLUMN an_frequency INT DEFAULT 1 COMMENT '每 N 条用户消息插一次，0=不插';
+
+-- 会话级模型选择（密钥不进库，只在 application.yml / 环境变量）
+ALTER TABLE t_chat_session
+    ADD COLUMN model_name VARCHAR(64) NULL COMMENT '本会话使用的模型名，空则用配置默认值';
+
+-- 用户人设 + 长对话记忆摘要
+ALTER TABLE t_chat_session
+    ADD COLUMN persona_name     VARCHAR(64)  NULL COMMENT '用户人设称呼，覆盖 {{user}}',
+    ADD COLUMN persona_desc     TEXT         NULL COMMENT '用户人设描述，注入提示词',
+    ADD COLUMN memory_summary   MEDIUMTEXT   NULL COMMENT '被裁掉的早期剧情摘要',
+    ADD COLUMN memory_until_id  BIGINT       NULL COMMENT '摘要已覆盖到的消息 id（含）',
+    ADD COLUMN memory_enabled   TINYINT      NOT NULL DEFAULT 1 COMMENT '1=自动摘要，0=关闭';
 
 -- 管理员密码 admin123 的 BCrypt
 INSERT INTO t_user (username, password, nickname, token_balance, member_level, role, status)

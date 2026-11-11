@@ -21,18 +21,21 @@ public record PromptBundle(
         int dialogueChars,
         int worldInfoChars,
         int authorNoteChars,
+        int personaChars,
+        int memoryChars,
         /** 本轮命中的世界书条目标题，前端可展示「这次用了哪些设定」 */
         List<String> activatedEntries
 ) {
 
     public int estimatedTokens() {
-        return (int) ((systemChars + dialogueChars + worldInfoChars + authorNoteChars)
-                / TokenEstimator.CHARS_PER_TOKEN);
+        return (int) ((systemChars + dialogueChars + worldInfoChars + authorNoteChars
+                + personaChars + memoryChars) / TokenEstimator.CHARS_PER_TOKEN);
     }
 
     /** 调用方知道会话总消息数时，用这个修正被丢弃的条数 */
     public PromptBundle withDroppedRounds(int dropped) {
         return new PromptBundle(messages, window, usedRounds, dropped, systemChars,
-                dialogueChars, worldInfoChars, authorNoteChars, activatedEntries);
+                dialogueChars, worldInfoChars, authorNoteChars, personaChars, memoryChars,
+                activatedEntries);
     }
 }

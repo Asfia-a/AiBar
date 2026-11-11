@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -46,6 +47,35 @@ public class WorldInfoController {
         String text = body.get("text") == null ? "" : body.get("text").toString();
         Integer budget = body.get("budget") == null ? null : Integer.valueOf(body.get("budget").toString());
         return Result.ok(worldInfoAdminService.preview(UserContext.getUserId(), characterId, text, budget));
+    }
+
+    /** 导出：按角色打包条目，前端下载成 JSON 文件 */
+    @GetMapping("/characters/{characterId}/worldbook/export")
+    public Result<?> export(@PathVariable Long characterId) {
+        return Result.ok(worldInfoAdminService.export(UserContext.getUserId(), characterId));
+    }
+
+    /** 导入：吃本系统导出的 JSON 结构；脏条目跳过，返回导入 / 跳过计数 */
+    @PostMapping("/characters/{characterId}/worldbook/import")
+    @SuppressWarnings("unchecked")
+    public Result<?> importEntries(@PathVariable Long characterId, @RequestBody Map<String, Object> body) {
+        Object raw = body.get("entries");
+        // 数组里混进非对象元素（数字/字符串）直接当脏数据，别让强转炸整批
+        List<Map<String, Object>> items = raw instanceof List<?> list
+                ? list.stream().filter(v -> v instanceof Map).map(v -> (Map<String, Object>) v).toList()
+                : List.of();
+        return Result.ok(worldInfoAdminService.importEntries(UserContext.getUserId(), characterId, items));
+    }
+
+    /** 拖拽排序：ids 按界面上的新顺序给出 */
+    @PutMapping("/characters/{characterId}/worldbook/reorder")
+    public Result<?> reorder(@PathVariable Long characterId, @RequestBody Map<String, Object> body) {
+        Object raw = body.get("ids");
+        List<Long> ids = raw instanceof List<?> list
+                ? list.stream().map(v -> Long.valueOf(String.valueOf(v))).toList()
+                : List.of();
+        worldInfoAdminService.reorder(UserContext.getUserId(), characterId, ids);
+        return Result.ok();
     }
 
     @PostMapping("/worldbook/global")

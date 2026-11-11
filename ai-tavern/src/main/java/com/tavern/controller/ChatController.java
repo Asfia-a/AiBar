@@ -26,7 +26,20 @@ public class ChatController {
     public Result<?> createSession(@RequestBody Map<String, Object> body) {
         Long characterId = Long.valueOf(body.get("characterId").toString());
         String title = body.get("title") == null ? null : body.get("title").toString();
-        return Result.ok(chatService.createSession(UserContext.getUserId(), characterId, title));
+        String modelName = body.get("modelName") == null ? null : body.get("modelName").toString();
+        return Result.ok(chatService.createSession(UserContext.getUserId(), characterId, title, modelName));
+    }
+
+    /** 聊天可用模型（仅 id/展示名，不含 API Key / Base URL） */
+    @GetMapping("/models")
+    public Result<?> models() {
+        return Result.ok(chatService.listModels());
+    }
+
+    @PutMapping("/sessions/{id}/model")
+    public Result<?> saveSessionModel(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        String modelName = body.get("modelName") == null ? "" : body.get("modelName").toString();
+        return Result.ok(chatService.saveSessionModel(UserContext.getUserId(), id, modelName));
     }
 
     @DeleteMapping("/sessions/{id}")
@@ -52,7 +65,8 @@ public class ChatController {
     public SseEmitter streamPost(@PathVariable Long sessionId, @RequestBody Map<String, Object> body) {
         String message = body.get("message") == null ? body.getOrDefault("content", "").toString() : body.get("message").toString();
         Long characterId = body.get("characterId") == null ? null : Long.valueOf(body.get("characterId").toString());
-        return chatService.stream(UserContext.getUserId(), sessionId, characterId, message);
+        Boolean thinking = body.get("thinking") == null ? null : Boolean.valueOf(body.get("thinking").toString());
+        return chatService.stream(UserContext.getUserId(), sessionId, characterId, message, thinking);
     }
 
     @PostMapping(value = "/messages/{id}/regenerate", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -68,8 +82,11 @@ public class ChatController {
 
     /** 再生成一版（滑动重生）：旧版本保留，可左右切回来 */
     @PostMapping(value = "/messages/{id}/swipe", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter swipe(@PathVariable Long id) {
-        return chatService.swipe(UserContext.getUserId(), id);
+    public SseEmitter swipe(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> body) {
+        Boolean thinking = body == null || body.get("thinking") == null
+                ? null
+                : Boolean.valueOf(body.get("thinking").toString());
+        return chatService.swipe(UserContext.getUserId(), id, thinking);
     }
 
     /** 切到第 index 版（从 0 开始），不调模型不扣积分 */
@@ -106,6 +123,15 @@ public class ChatController {
         return Result.ok(chatService.deleteMessages(UserContext.getUserId(), sessionId, ids));
     }
 
+    /**
+     * 删除一轮：以某条消息为锚点，连同配对的用户/助手消息一起删掉，
+     * 之后不会再进入提示词上下文。
+     */
+    @PostMapping("/sessions/{sessionId}/messages/{messageId}/delete-round")
+    public Result<?> deleteRound(@PathVariable Long sessionId, @PathVariable Long messageId) {
+        return Result.ok(chatService.deleteRound(UserContext.getUserId(), sessionId, messageId));
+    }
+
     @PostMapping("/messages/{id}/collect")
     public Result<?> collect(@PathVariable Long id) {
         chatService.collectMessage(UserContext.getUserId(), id);
@@ -130,5 +156,41 @@ public class ChatController {
         Integer depth = body.get("depth") == null ? null : Integer.valueOf(body.get("depth").toString());
         Integer frequency = body.get("frequency") == null ? null : Integer.valueOf(body.get("frequency").toString());
         return Result.ok(chatService.saveAuthorNote(UserContext.getUserId(), id, note, depth, frequency));
+    }
+
+    @GetMapping("/sessions/{id}/persona")
+    public Result<?> persona(@PathVariable Long id) {
+        return Result.ok(chatService.persona(UserContext.getUserId(), id));
+    }
+
+    @PutMapping("/sessions/{id}/persona")
+    public Result<?> savePersona(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        String name = body.get("personaName") == null
+                ? (body.get("name") == null ? "" : body.get("name").toString())
+                : body.get("personaName").toString();
+        String desc = body.get("personaDesc") == null
+                ? (body.get("desc") == null ? "" : body.get("desc").toString())
+                : body.get("personaDesc").toString();
+        return Result.ok(chatService.savePersona(UserContext.getUserId(), id, name, desc));
+    }
+
+    @GetMapping("/sessions/{id}/memory")
+    public Result<?> memory(@PathVariable Long id) {
+        return Result.ok(chatService.memory(UserContext.getUserId(), id));
+    }
+
+    @PutMapping("/sessions/{id}/memory")
+    public Result<?> saveMemory(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        String summary = body.containsKey("summary")
+                ? (body.get("summary") == null ? "" : body.get("summary").toString())
+                : null;
+        Boolean enabled = body.get("enabled") == null ? null : Boolean.valueOf(body.get("enabled").toString());
+        boolean clearUntil = Boolean.TRUE.equals(body.get("clearUntil"));
+        return Result.ok(chatService.saveMemory(UserContext.getUserId(), id, summary, enabled, clearUntil));
+    }
+
+    @PostMapping("/sessions/{id}/memory/refresh")
+    public Result<?> refreshMemory(@PathVariable Long id) {
+        return Result.ok(chatService.refreshMemory(UserContext.getUserId(), id));
     }
 }

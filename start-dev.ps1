@@ -1,4 +1,4 @@
-# AiBar 开发环境一键启动
+﻿# AiBar 开发环境一键启动
 # 用法：右键"使用 PowerShell 运行"，或在 PowerShell 里执行 .\start-dev.ps1
 
 $ErrorActionPreference = 'Continue'

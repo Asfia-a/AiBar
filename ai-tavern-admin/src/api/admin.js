@@ -68,7 +68,3 @@ export function getViolations(params) {
 export function getModelConfig() {
   return request.get('/admin/model/config')
 }
-
-export function updateModelConfig(data) {
-  return request.put('/admin/model/config', data)
-}

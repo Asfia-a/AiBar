@@ -37,6 +37,11 @@ public class CharacterAssistService {
             .build();
 
     public Map<String, Object> generateCard(String idea, String worldContext, boolean withAvatar) {
+        return generateCard(idea, worldContext, withAvatar, null);
+    }
+
+    public Map<String, Object> generateCard(String idea, String worldContext, boolean withAvatar,
+                                            String modelName) {
         if (!StringUtils.hasText(idea)) {
             throw new BusinessException("请先描述你想要的角色");
         }
@@ -71,7 +76,8 @@ public class CharacterAssistService {
                         Map.of("role", "user", "content", user.toString())
                 ),
                 0.85,
-                2500
+                2500,
+                modelName
         );
         Map<String, Object> card = parseCardJson(raw);
         Long categoryId = characterService.resolveCategoryId(null, Objects.toString(card.get("category"), null));
@@ -103,7 +109,12 @@ public class CharacterAssistService {
 
     /** 生成卡并直接存为草稿角色 */
     public CharacterCard generateAndSave(Long userId, String idea, String worldContext, boolean withAvatar) {
-        Map<String, Object> card = generateCard(idea, worldContext, withAvatar);
+        return generateAndSave(userId, idea, worldContext, withAvatar, null);
+    }
+
+    public CharacterCard generateAndSave(Long userId, String idea, String worldContext, boolean withAvatar,
+                                         String modelName) {
+        Map<String, Object> card = generateCard(idea, worldContext, withAvatar, modelName);
         CharacterRequest req = new CharacterRequest();
         req.setName(clip(Objects.toString(card.get("name"), "未命名"), 50));
         req.setAvatar(Objects.toString(card.get("avatar"), null));

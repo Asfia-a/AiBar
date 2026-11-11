@@ -100,13 +100,20 @@ public class NarrativeService {
 
         StringBuilder full = new StringBuilder();
         AiModelService.StreamResult result = aiModelService.streamChat(
-                bundle.messages(), AiModelService.ChatParams.simple(0.85, 0.92, 3000), delta -> {
-                    if (delta == null || delta.isEmpty()) {
+                bundle.messages(),
+                AiModelService.ChatParams.simple(0.85, 0.92, 3000),
+                req.modelName(),
+                chunk -> {
+                    if (chunk == null || chunk.text() == null || chunk.text().isEmpty()) {
                         return;
                     }
-                    full.append(delta);
+                    // 叙事改写只要正文；思考链不推给前端
+                    if (chunk.kind() != AiModelService.StreamChunk.Kind.CONTENT) {
+                        return;
+                    }
+                    full.append(chunk.text());
                     try {
-                        emitter.send(SseEmitter.event().data(delta, org.springframework.http.MediaType.TEXT_PLAIN));
+                        emitter.send(SseEmitter.event().data(chunk.text(), org.springframework.http.MediaType.TEXT_PLAIN));
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
@@ -149,7 +156,7 @@ public class NarrativeService {
         long start = System.currentTimeMillis();
         String content;
         try {
-            content = aiModelService.chatCompletion(bundle.messages(), 0.85, 3000);
+            content = aiModelService.chatCompletion(bundle.messages(), 0.85, 3000, req.modelName());
         } catch (Exception e) {
             log.warn("同步改写失败: {}", e.getMessage());
             throw new BusinessException(ErrorCode.AI_ERROR);

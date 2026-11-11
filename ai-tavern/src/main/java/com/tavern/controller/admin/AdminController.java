@@ -1,7 +1,6 @@
 package com.tavern.controller.admin;
 
 import com.tavern.common.Result;
-import com.tavern.entity.ModelConfig;
 import com.tavern.service.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -128,14 +127,9 @@ public class AdminController {
         return Result.ok(contentAuditService.listViolations());
     }
 
+    /** 只读摘要：密钥已迁到配置文件，聊天模型在用户端选择 */
     @GetMapping("/model/config")
     public Result<?> getModelConfig() {
         return Result.ok(aiModelService.getConfig());
-    }
-
-    @PutMapping("/model/config")
-    public Result<?> updateModelConfig(@RequestBody ModelConfig config) {
-        aiModelService.updateConfig(config);
-        return Result.ok();
     }
 }

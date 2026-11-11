@@ -5,8 +5,7 @@ import router from './router'
 import { reveal, tilt } from './directives/motion'
 import './style.css'
 
-// 新版界面默认暗色（现代 AI 产品风）
-document.documentElement.classList.add('dark')
+// 主题（暗/亮）由 index.html 的内联脚本在首屏前挂好 .dark，src/theme.js 负责切换
 
 const app = createApp(App)
 

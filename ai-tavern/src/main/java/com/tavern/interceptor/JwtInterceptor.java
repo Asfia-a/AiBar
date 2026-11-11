@@ -31,6 +31,9 @@ public class JwtInterceptor implements HandlerInterceptor {
             "/api/characters/search",
             "/api/characters/{id}",
             "/api/characters/{id}/comments",
+            "/api/worlds",
+            "/api/worlds/hot",
+            "/api/worlds/{id}",
             "/api/tags",
             "/api/categories"
     );

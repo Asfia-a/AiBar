@@ -15,6 +15,8 @@ public class CharacterRequest {
     private String personality;
     private String backgroundStory;
     private String exampleDialogue;
+    /** Post-History Instructions：拼在全部历史之后的收尾强指令，空表示不追加 */
+    private String postHistory;
     private String greeting;
     private Long categoryId;
     /** 分类名（工坊/导入用），与 categoryId 二选一或互补 */

@@ -37,7 +37,13 @@ public class NarrativePromptService {
     /** 单次叙事允许的最大对话原文 token 估算值（中文约 1 字 ≈ 0.7 token，留出输出空间） */
     private static final int DIALOGUE_TOKEN_BUDGET = 4000;
 
-    public record Request(Long sessionId, String formType, String style, String length, String extraInstruction) {}
+    public record Request(Long sessionId, String formType, String style, String length,
+                          String extraInstruction, String modelName) {
+        /** 兼容旧调用：不传模型时走配置默认 */
+        public Request(Long sessionId, String formType, String style, String length, String extraInstruction) {
+            this(sessionId, formType, style, length, extraInstruction, null);
+        }
+    }
 
     /** 分层提示词构建结果，同时把统计信息带给前端 */
     public record PromptBundle(List<Map<String, String>> messages, int messageCount, int dialogueChars) {}

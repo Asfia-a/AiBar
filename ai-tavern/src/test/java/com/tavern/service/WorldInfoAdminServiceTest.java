@@ -143,4 +143,102 @@ class WorldInfoAdminServiceTest {
         assertEquals(0, out.get("hitCount"));
         assertEquals(1, out.get("missedCount"));
     }
+
+    @Test
+    @DisplayName("导出：字段名与请求体对齐，条目里不带 id")
+    void exportStripsIds() {
+        when(characterMapper.findById(1L)).thenReturn(card(1L, 7L));
+        when(mapper.listByCharacter(1L)).thenReturn(List.of(entry(9L, "钟楼", "钟楼每晚敲十三下")));
+
+        Map<String, Object> out = service.export(7L, 1L);
+
+        assertEquals("ai-tavern-worldbook", out.get("format"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) out.get("entries");
+        assertEquals(1, items.size());
+        assertFalse(items.get(0).containsKey("id"));
+        assertEquals("钟楼每晚敲十三下", items.get(0).get("content"));
+        assertEquals(Boolean.TRUE, items.get(0).get("enabled"));
+    }
+
+    @Test
+    @DisplayName("导入：合法条目新建落库，缺正文的脏条目跳过")
+    void importSkipsDirtyEntries() {
+        when(characterMapper.findById(1L)).thenReturn(card(1L, 7L));
+        when(mapper.listByCharacter(1L)).thenReturn(List.of());
+
+        Map<String, Object> good = Map.of(
+                "title", "钟楼", "keys", "钟楼", "content", "钟楼每晚敲十三下",
+                "position", "after_char", "constant", false, "enabled", true);
+        Map<String, Object> noContent = Map.of("title", "空条目");
+        Map<String, Object> noKeys = Map.of("title", "没触发词", "content", "有内容");
+
+        Map<String, Object> out = service.importEntries(7L, 1L,
+                List.of(good, noContent, noKeys));
+
+        assertEquals(1, out.get("imported"));
+        assertEquals(2, out.get("skipped"));
+        ArgumentCaptor<WorldInfoEntry> captor = ArgumentCaptor.forClass(WorldInfoEntry.class);
+        verify(mapper).insert(captor.capture());
+        assertEquals("钟楼每晚敲十三下", captor.getValue().getContent());
+        assertEquals(1L, captor.getValue().getCharacterId());
+        assertNull(captor.getValue().getId(), "导入的条目 id 一律由库重新分配");
+    }
+
+    @Test
+    @DisplayName("导入：角色条目上限照常生效，多出来的算 skipped")
+    void importRespectsCap() {
+        when(characterMapper.findById(1L)).thenReturn(card(1L, 7L));
+        // 已有 80 条 → 一条都导不进来
+        List<WorldInfoEntry> full = new java.util.ArrayList<>();
+        for (long i = 1; i <= 80; i++) {
+            full.add(entry(i, "钥匙" + i, "内容" + i));
+        }
+        when(mapper.listByCharacter(1L)).thenReturn(full);
+
+        Map<String, Object> out = service.importEntries(7L, 1L, List.of(
+                Map.of("title", "新条目", "keys", "新", "content", "新内容")));
+
+        assertEquals(0, out.get("imported"));
+        assertEquals(1, out.get("skipped"));
+        verify(mapper, org.mockito.Mockito.never()).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("排序：按前端给的新顺序重写 order_no，步长 10")
+    void rewritesOrderNoByNewSequence() {
+        when(characterMapper.findById(1L)).thenReturn(card(1L, 7L));
+        when(mapper.listByCharacter(1L)).thenReturn(List.of(
+                entry(1L, "钟楼", "内容"), entry(2L, "码头", "内容"), entry(3L, "灯塔", "内容")));
+
+        service.reorder(7L, 1L, List.of(3L, 1L, 2L));
+
+        verify(mapper).updateOrderNo(3L, 0);
+        verify(mapper).updateOrderNo(1L, 10);
+        verify(mapper).updateOrderNo(2L, 20);
+    }
+
+    @Test
+    @DisplayName("排序：混入别人的条目 id 直接整体拒绝，一条都不写")
+    void reorderRejectsForeignIds() {
+        when(characterMapper.findById(1L)).thenReturn(card(1L, 7L));
+        when(mapper.listByCharacter(1L)).thenReturn(List.of(entry(1L, "钟楼", "内容")));
+
+        assertThrows(BusinessException.class,
+                () -> service.reorder(7L, 1L, List.of(1L, 999L)));
+        verify(mapper, org.mockito.Mockito.never()).updateOrderNo(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    @DisplayName("导入 / 排序：不是角色作者直接 403")
+    void importAndReorderRequireOwner() {
+        when(characterMapper.findById(1L)).thenReturn(card(1L, 7L));
+
+        assertThrows(BusinessException.class,
+                () -> service.importEntries(8L, 1L, List.of(Map.of("content", "内容"))));
+        assertThrows(BusinessException.class,
+                () -> service.reorder(8L, 1L, List.of(1L)));
+        verify(mapper, org.mockito.Mockito.never()).insert(org.mockito.ArgumentMatchers.any());
+    }
 }

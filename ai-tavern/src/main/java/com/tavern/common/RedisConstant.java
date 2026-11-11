@@ -3,7 +3,10 @@ package com.tavern.common;
 public final class RedisConstant {
     private RedisConstant() {}
 
-    public static final String CHARACTER_HOT = "character:hot";
+    /** 热度排行 ZSet（member=characterId, score=hotScore），仅供统计任务读写 */
+    public static final String CHARACTER_HOT = "character:hot:zset";
+    /** 旧版共用键，启动/失效时顺带删掉，避免和列表缓存撞车 */
+    public static final String CHARACTER_HOT_LEGACY = "character:hot";
     public static final String SENSITIVE_WORDS = "sensitive:words";
     public static final String DAU_PREFIX = "stats:dau:";
 
@@ -18,8 +21,8 @@ public final class RedisConstant {
     /** MCP 工具调用时间线（List，保留最近 200 条，3 天过期） */
     public static final String METRIC_MCP = "metrics:mcp";
 
-    /** 热门角色列表缓存 */
-    public static final String HOT_CHARACTERS = "character:hot";
+    /** 热门角色列表 JSON 缓存（与 ZSet 必须分键，否则类型互相覆盖） */
+    public static final String HOT_CHARACTERS = "character:hot:list";
     /** 标签列表缓存 */
     public static final String TAG_LIST = "tag:list";
     /** 模型配置缓存 */

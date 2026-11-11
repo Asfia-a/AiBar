@@ -5,6 +5,15 @@ export function getSessions() {
   return request.get('/chat/sessions')
 }
 
+/** 聊天可选模型（仅展示名，不含 API Key） */
+export function getChatModels() {
+  return request.get('/chat/models')
+}
+
+export function setSessionModel(sessionId, modelName) {
+  return request.put(`/chat/sessions/${sessionId}/model`, { modelName })
+}
+
 export function createSession(data) {
   return request.post('/chat/sessions', data)
 }
@@ -22,6 +31,11 @@ export function deleteMessages(sessionId, ids) {
   return request.post(`/chat/sessions/${sessionId}/messages/delete`, { ids })
 }
 
+/** 删除一轮（用户 + 配对助手），之后模型上下文里也不会再看到 */
+export function deleteRound(sessionId, messageId) {
+  return request.post(`/chat/sessions/${sessionId}/messages/${messageId}/delete-round`)
+}
+
 /** 会话级作者注释：一段插在历史里的强指令 */
 export function getAuthorNote(sessionId) {
   return request.get(`/chat/sessions/${sessionId}/author-note`)
@@ -29,6 +43,26 @@ export function getAuthorNote(sessionId) {
 
 export function saveAuthorNote(sessionId, data) {
   return request.put(`/chat/sessions/${sessionId}/author-note`, data)
+}
+
+export function getPersona(sessionId) {
+  return request.get(`/chat/sessions/${sessionId}/persona`)
+}
+
+export function savePersona(sessionId, data) {
+  return request.put(`/chat/sessions/${sessionId}/persona`, data)
+}
+
+export function getMemory(sessionId) {
+  return request.get(`/chat/sessions/${sessionId}/memory`)
+}
+
+export function saveMemory(sessionId, data) {
+  return request.put(`/chat/sessions/${sessionId}/memory`, data)
+}
+
+export function refreshMemory(sessionId) {
+  return request.post(`/chat/sessions/${sessionId}/memory/refresh`)
 }
 
 /**
@@ -95,6 +129,12 @@ async function consumeSse(response, { onChunk, onDone, onError }) {
         const text = unwrapData(payload)
         if (text) onChunk?.({ content: text })
       }
+      return
+    }
+    // DeepSeek 思考链：与正文分事件推送
+    if (name === 'reasoning') {
+      const text = unwrapData(payload)
+      if (text) onChunk?.({ reasoning: text })
       return
     }
     const text = unwrapData(payload)
@@ -184,7 +224,11 @@ async function postSse(url, body, { onChunk, onDone, onError, signal } = {}) {
 export function streamChat(sessionId, data, handlers) {
   return postSse(
     `/api/chat/sessions/${sessionId}/messages`,
-    { message: data.message || data.content, characterId: data.characterId },
+    {
+      message: data.message || data.content,
+      characterId: data.characterId,
+      thinking: data.thinking === true,
+    },
     handlers,
   )
 }
@@ -194,8 +238,12 @@ export function streamRegenerate(sessionId, messageId, handlers = {}) {
 }
 
 /** 再生成一版：旧版本保留，前端可以左右切 */
-export function streamSwipe(messageId, handlers = {}) {
-  return postSse(`/api/chat/messages/${messageId}/swipe`, {}, handlers)
+export function streamSwipe(messageId, handlers = {}, data = {}) {
+  return postSse(
+    `/api/chat/messages/${messageId}/swipe`,
+    { thinking: data.thinking === true },
+    handlers,
+  )
 }
 
 /** 切到第 index 版（从 0 开始），不调模型 */

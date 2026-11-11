@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>世界树 · 创作者界面样品</title>
+  <style>
+    :root {
+      --bg: #f2efe9;
+      --panel: #faf8f4;
+      --ink: #1c1b19;
+      --muted: #6e6a63;
+      --line: #e2ddd3;
+      --accent: #9a6b3f;
+      --accent-soft: #efe2d4;
+      --ok: #5c7a55;
+      --warn: #b0893d;
+      --empty: #b7b2a8;
+      --shadow: 0 18px 50px rgba(40, 32, 20, 0.08);
+      --font: "Iowan Old Style", "Palatino Linotype", "Songti SC", "Noto Serif SC", Georgia, serif;
+      --ui: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #ebe4d7 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #e7ebe4 0%, transparent 50%),
+        var(--bg);
+      color: var(--ink);
+      font-family: var(--ui);
+    }
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 64px;
+    }
+    h1 {
+      font-family: var(--font);
+      font-weight: 600;
+      font-size: 1.75rem;
+      letter-spacing: 0.02em;
+      margin: 0 0 6px;
+    }
+    .lead {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      max-width: 52rem;
+      margin: 0 0 22px;
+    }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .tabs button {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.55);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: 0.15s ease;
+    }
+    .tabs button:hover { border-color: #cfc7b8; }
+    .tabs button.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #f7f4ee;
+    }
+    .stage {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-height: 620px;
+    }
+    .sample { display: none; min-height: 620px; }
+    .sample.active { display: flex; flex-direction: column; }
+    .chrome {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.4);
+    }
+    .chrome .title {
+      font-family: var(--font);
+      font-size: 1.05rem;
+    }
+    .chrome .meta { color: var(--muted); font-size: 0.78rem; }
+    .chrome .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip, .ghost, .primary {
+      border-radius: 8px;
+      font-size: 0.78rem;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: default;
+    }
+    .primary { background: var(--ink); color: #f7f4ee; border-color: var(--ink); }
+    .ghost { background: transparent; }
+    .lenses {
+      display: inline-flex;
+      padding: 3px;
+      border-radius: 10px;
+      background: #ebe6dc;
+      gap: 2px;
+    }
+    .lenses span {
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .lenses span.on {
+      background: #fff;
+      color: var(--ink);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    }
+    .body { flex: 1; display: grid; min-height: 0; }
+    .hint {
+      padding: 8px 16px 12px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.75rem;
+      background: rgba(255,255,255,0.35);
+    }
+    .note {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-left: 3px solid var(--accent);
+      background: rgba(255,255,255,0.45);
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.55;
+    }
+    .note strong { color: var(--ink); font-weight: 600; }
+
+    /* A writing desk */
+    .a-grid {
+      grid-template-columns: 250px 1fr;
+      min-height: 540px;
+    }
+    .outline {
+      border-right: 1px solid var(--line);
+      padding: 12px 8px;
+      overflow: auto;
+      background: #f6f3ed;
+    }
+    .outline .search {
+      margin: 0 6px 10px;
+      width: calc(100% - 12px);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 10px;
+      background: #fff;
+      font-size: 0.8rem;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      color: var(--ink);
+      cursor: default;
+    }
+    .row:hover { background: rgba(255,255,255,0.7); }
+    .row.sel {
+      background: var(--accent-soft);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .row .dot {
+      width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto;
+    }
+    .row .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row .stat { color: var(--muted); font-size: 0.7rem; }
+    .indent-0 { padding-left: 8px; font-weight: 600; }
+    .indent-1 { padding-left: 18px; }
+    .indent-2 { padding-left: 30px; }
+    .indent-3 { padding-left: 42px; }
+    .editor {
+      padding: 22px 28px 28px;
+      overflow: auto;
+    }
+    .editor h2 {
+      font-family: var(--font);
+      font-size: 1.7rem;
+      margin: 0 0 8px;
+      font-weight: 600;
+    }
+    .editor .summary {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 18px;
+      line-height: 1.5;
+    }
+    .editor .prose {
+      font-family: var(--font);
+      font-size: 0.98rem;
+      line-height: 1.85;
+      color: #2a2825;
+      max-width: 42rem;
+      white-space: pre-wrap;
+    }
+    .ai-float {
+      position: sticky;
+      bottom: 12px;
+      display: inline-flex;
+      gap: 8px;
+      margin-top: 24px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.92);
+      box-shadow: var(--shadow);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .ai-float b { color: var(--accent); font-weight: 600; }
+
+    /* B dense outline */
+    .b-wrap { padding: 10px 18px 20px; overflow: auto; }
+    .b-toolbar {
+      display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .b-toolbar input {
+      flex: 1; min-width: 180px;
+      border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff;
+    }
+    .oline {
+      display: grid;
+      grid-template-columns: 14px 1fr auto auto auto;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 0.88rem;
+    }
+    .oline:hover { background: #f3efe7; }
+    .oline.open {
+      background: #fff;
+      border: 1px solid var(--line);
+      margin: 4px 0 8px;
+      box-shadow: 0 8px 24px rgba(40,32,20,0.05);
+    }
+    .pip { width: 8px; height: 8px; border-radius: 50%; }
+    .pip.ok { background: var(--ok); }
+    .pip.warn { background: var(--warn); }
+    .pip.empty { background: var(--empty); }
+    .tag {
+      font-size: 0.68rem;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 7px;
+    }
+    .wc { color: var(--muted); font-size: 0.72rem; min-width: 52px; text-align: right; }
+    .inline-edit {
+      grid-column: 2 / -1;
+      margin-top: 6px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: #fbfaf7;
+      font-family: var(--font);
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: #333;
+    }
+
+    /* C nested cards */
+    .c-grid {
+      grid-template-columns: 1fr 320px;
+      min-height: 540px;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      padding: 16px;
+      overflow: auto;
+      background:
+        linear-gradient(180deg, #f7f4ee, #f2eee6);
+    }
+    .nest {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.72);
+      padding: 12px;
+      min-height: 420px;
+    }
+    .nest h3 {
+      margin: 0 0 4px;
+      font-family: var(--font);
+      font-size: 1.05rem;
+    }
+    .nest .sub { color: var(--muted); font-size: 0.75rem; margin-bottom: 10px; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 10px 8px;
+      background: #fff;
+      margin-bottom: 8px;
+    }
+    .card.sel {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .card .k { font-size: 0.86rem; font-weight: 600; margin-bottom: 4px; }
+    .card .v { font-size: 0.75rem; color: var(--muted); line-height: 1.45; }
+    .drawer {
+      border-left: 1px solid var(--line);
+      padding: 18px 16px;
+      background: #fbfaf7;
+      overflow: auto;
+    }
+    .drawer h3 {
+      font-family: var(--font);
+      margin: 0 0 8px;
+      font-size: 1.2rem;
+    }
+    .drawer p { color: #333; font-size: 0.88rem; line-height: 1.7; margin: 0; }
+
+    /* D hybrid */
+    .d-grid {
+      grid-template-columns: 220px 1fr;
+      min-height: 540px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>世界树 · 创作者界面样品</h1>
+    <p class="lead">
+      四套极简方案草稿，偏创作效率与信息密度，刻意避开「正经思维导图」。
+      点上方标签切换；这是静态线框样品，不是已接入产品的功能。
+    </p>
+
+    <div class="tabs" id="tabs">
+      <button type="button" class="active" data-id="a">A · 写作台</button>
+      <button type="button" data-id="b">B · 高密度大纲</button>
+      <button type="button" data-id="c">C · 巢状卡片</button>
+      <button type="button" data-id="d">D · 写 + 骨架合体</button>
+    </div>
+
+    <div class="stage">
+      <!-- A -->
+      <section class="sample active" id="a">
+        <div class="chrome">
+          <div>
+            <div class="title">示我周行 Show Me Your Ways</div>
+            <div class="meta">已充实 86 / 274 · 自动保存 刚刚</div>
+          </div>
+          <div class="actions">
+            <span class="ghost">AI</span>
+            <span class="chip">保存草稿</span>
+            <span class="primary">发布</span>
+          </div>
+        </div>
+        <div class="body a-grid">
+          <aside class="outline">
+            <input class="search" value="搜索节点…" readonly />
+            <div class="row indent-0"><span class="dot" style="background:#9a6b3f"></span><span class="name">示我周行</span><span class="stat">根</span></div>
+            <div class="row indent-1"><span class="dot" style="background:#7a8794"></span><span class="name">背景</span><span class="stat">18</span></div>
+            <div class="row indent-2"><span class="dot" style="background:#7a8794"></span><span class="name">前言</span><span class="stat">3/3</span></div>
+            <div class="row indent-3"><span class="dot" style="background:#5c7a55"></span><span class="name">一、时光</span><span class="stat">864</span></div>
+            <div class="row indent-2"><span class="dot" style="background:#c45c6a"></span><span class="name">种族</span><span class="stat">6/7</span></div>
+            <div class="row indent-1"><span class="dot" style="background:#7a8794"></span><span class="name">设定集</span><span class="stat">137</span></div>
+            <div class="row indent-2 sel"><span class="dot" style="background:#5c7a55"></span><span class="name">生命不可承受之轻</span><span class="stat">5426</span></div>
+            <div class="row indent-2"><span class="dot" style="background:#b0893d"></span><span class="name">水铅</span><span class="stat">短</span></div>
+            <div class="row indent-1"><span class="dot" style="background:#7a8794"></span><span class="name">时间线与事件</span><span class="stat">48</span></div>
+          </aside>
+          <main class="editor">
+            <h2>生命不可承受之轻</h2>
+            <div class="summary">当生命变得轻飘，责任与意义如何重新落地；水铅时代的伦理裂缝。</div>
+            <div class="prose">……我花了十七年时间，追踪一个假说。这个假说认为：在人类的集体意识深处，存在一个我们至今无法测量的场域。当足够多的人对同一件事怀有足够强烈的愿望时，这些意识波动会相互叠加，并在某处凝成可见的「轻」。
+
+轻不是自由的同义词。它更像是一种抽空：记忆变薄，契约失去重量，连死亡都开始像舞台换景。不周山的信使们因此改写了投递守则——凡涉及水铅与奇迹的信件，必须双人签收。
+
+（此处继续长文编辑……）</div>
+            <div class="ai-float">选中节点 · <b>扩写</b> · 生兄弟 · 补类型</div>
+          </main>
+        </div>
+        <div class="hint">Tab 子节点 · Enter 同级 · 左侧看结构与完成度，右侧只写正文</div>
+      </section>
+
+      <!-- B -->
+      <section class="sample" id="b">
+        <div class="chrome">
+          <div>
+            <div class="title">大纲即画布</div>
+            <div class="meta">一屏扫完全树 · 点开一行就地写</div>
+          </div>
+          <div class="actions">
+            <span class="chip">只看空缺</span>
+            <span class="primary">新建</span>
+          </div>
+        </div>
+        <div class="b-wrap">
+          <div class="b-toolbar">
+            <input value="筛选：伊比利亚 / 空正文 / 种族…" readonly />
+            <span class="chip">完成度排序</span>
+          </div>
+          <div class="oline"><span class="pip ok"></span><span style="font-weight:600">示我周行 Show Me Your Ways</span><span class="tag">世界</span><span class="wc">总览</span><span></span></div>
+          <div class="oline" style="padding-left:22px"><span class="pip ok"></span><span>背景</span><span class="tag">篇章</span><span class="wc">3.3万字</span><span></span></div>
+          <div class="oline" style="padding-left:40px"><span class="pip ok"></span><span>一、时光</span><span class="tag">篇章</span><span class="wc">864字</span><span></span></div>
+          <div class="oline" style="padding-left:40px"><span class="pip warn"></span><span>卢那：世界的词语是森林</span><span class="tag">种族</span><span class="wc">12字</span><span></span></div>
+          <div class="oline open" style="padding-left:22px">
+            <span class="pip ok"></span>
+            <span style="font-weight:600">生命不可承受之轻</span>
+            <span class="tag">法则</span>
+            <span class="wc">5426字</span>
+            <span></span>
+            <div class="inline-edit">就地展开编辑区：不离开大纲页。可继续向下滚动扫下一空缺条目。</div>
+          </div>
+          <div class="oline" style="padding-left:22px"><span class="pip empty"></span><span>世界历法</span><span class="tag">历法</span><span class="wc">空</span><span></span></div>
+          <div class="oline" style="padding-left:22px"><span class="pip warn"></span><span>热能灯</span><span class="tag">百科</span><span class="wc">142字</span><span></span></div>
+          <div class="oline" style="padding-left:22px"><span class="pip ok"></span><span>伊比利亚拓荒团独立</span><span class="tag">时代</span><span class="wc">事件</span><span></span></div>
+        </div>
+        <div class="hint">绿=充实 · 黄=偏短 · 灰=空缺 — 创作时先滤「只看空缺」补洞最快</div>
+      </section>
+
+      <!-- C -->
+      <section class="sample" id="c">
+        <div class="chrome">
+          <div>
+            <div class="title">示我周行</div>
+            <div class="meta">巢状卡片 · 一层只看当前景深</div>
+          </div>
+          <div class="actions">
+            <span class="chip">已充实 86/274</span>
+            <span class="primary">保存</span>
+          </div>
+        </div>
+        <div class="body c-grid">
+          <div class="board">
+            <div class="nest">
+              <h3>背景</h3>
+              <div class="sub">前言 · 信仰 · 种族 · 大地</div>
+              <div class="card"><div class="k">前言</div><div class="v">时光 / 梦境 / 苦痛三章定调</div></div>
+              <div class="card"><div class="k">种族</div><div class="v">生者与余众 · 7 族</div></div>
+              <div class="card"><div class="k">大地与国家</div><div class="v">可见的版图与看不见的边界</div></div>
+            </div>
+            <div class="nest">
+              <h3>设定集</h3>
+              <div class="sub">137 条 · 按章归类</div>
+              <div class="card sel"><div class="k">生命不可承受之轻</div><div class="v">水铅时代的伦理裂缝</div></div>
+              <div class="card"><div class="k">奇迹、魂灵和想象学</div><div class="v">变幻的阶梯 · 长文</div></div>
+              <div class="card"><div class="k">伊比利亚</div><div class="v">10 条地域与人物</div></div>
+            </div>
+            <div class="nest">
+              <h3>时间线</h3>
+              <div class="sub">48 事件</div>
+              <div class="card"><div class="k">第七次魔王战争</div><div class="v">秩序重组的开端</div></div>
+              <div class="card"><div class="k">不周山邮政公司成立</div><div class="v">武装信使登场</div></div>
+            </div>
+          </div>
+          <aside class="drawer">
+            <h3>生命不可承受之轻</h3>
+            <p>选中卡片后，右侧抽屉写正文。板面保持「展览感」，写作不离开本页。</p>
+            <p style="margin-top:12px;color:var(--muted)">适合愿景展示与中等体量世界；200+ 节点必须强折叠，否则易花。</p>
+          </aside>
+        </div>
+        <div class="hint">美观优先 · 创作速度次于 A/B</div>
+      </section>
+
+      <!-- D -->
+      <section class="sample" id="d">
+        <div class="chrome">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <div class="title">示我周行</div>
+            <div class="lenses">
+              <span class="on">写</span>
+              <span>骨架</span>
+              <span>一览</span>
+            </div>
+          </div>
+          <div class="actions">
+            <span class="meta" style="align-self:center">自动保存</span>
+            <span class="primary">发布</span>
+          </div>
+        </div>
+        <div class="body d-grid">
+          <aside class="outline">
+            <div class="row indent-0"><span class="dot" style="background:#9a6b3f"></span><span class="name">世界根</span><span class="stat"></span></div>
+            <div class="row indent-1"><span class="dot" style="background:#7a8794"></span><span class="name">背景</span><span class="stat">18</span></div>
+            <div class="row indent-1 sel"><span class="dot" style="background:#5c7a55"></span><span class="name">设定集</span><span class="stat">137</span></div>
+            <div class="row indent-2"><span class="dot" style="background:#5c7a55"></span><span class="name">生命不可承受之轻</span><span class="stat"></span></div>
+            <div class="row indent-2"><span class="dot" style="background:#b7b2a8"></span><span class="name">世界历法</span><span class="stat">空</span></div>
+            <div class="row indent-1"><span class="dot" style="background:#7a8794"></span><span class="name">时间线</span><span class="stat">48</span></div>
+          </aside>
+          <main class="editor">
+            <h2>设定集</h2>
+            <div class="summary">137 条设定按章节归类。当前透镜：写 — 骨架透镜可切换成 B 的纯大纲扫空缺。</div>
+            <div class="prose">同一工作区三态切换，不换路由、不堆卡片。创作者 90% 时间停在「写」；需要补洞时切「骨架」；偶尔切「一览」看结构洞。</div>
+            <div class="ai-float">光标旁 AI · 不占半屏</div>
+          </main>
+        </div>
+        <div class="hint">推荐落地形态：A 为默认「写」，B 能力挂在「骨架」透镜</div>
+      </section>
+    </div>
+
+    <div class="note" id="note">
+      <strong>A · 写作台：</strong>创作主路径最稳——结构与正文同屏，快捷键友好，极简且信息密度高。
+    </div>
+  </div>
+
+  <script>
+    const notes = {
+      a: '<strong>A · 写作台：</strong>创作主路径最稳——结构与正文同屏，快捷键友好，极简且信息密度高。',
+      b: '<strong>B · 高密度大纲：</strong>搭骨架、扫空缺最快；长文体验略弱于写作台，适合爆发式补全。',
+      c: '<strong>C · 巢状卡片：</strong>最好看、最有「世界」感；节点一多要强折叠，创作效率通常低于 A/B。',
+      d: '<strong>D · 合体：</strong>建议产品形态——默认 A，骨架模式复用 B，「一览」以后再做轻量结构预览。',
+    }
+    const tabs = document.getElementById('tabs')
+    const note = document.getElementById('note')
+    tabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-id]')
+      if (!btn) return
+      tabs.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn))
+      document.querySelectorAll('.sample').forEach((s) => s.classList.toggle('active', s.id === btn.dataset.id))
+      note.innerHTML = notes[btn.dataset.id]
+    })
+  </script>
+</body>
+</html>

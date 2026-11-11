@@ -71,6 +71,8 @@ class PromptEngineTest {
 
         PromptBundle bundle = engine.build(in);
         assertEquals(1, bundle.activatedEntries().size());
+        // 前端「本轮命中」直接展示标题，所以这里必须是可读名而不是空串 / id
+        assertEquals("设定1", bundle.activatedEntries().get(0));
         assertTrue(bundle.messages().stream().anyMatch(m -> m.get("content").contains("每七天来一班船")));
         assertTrue(bundle.worldInfoChars() > 0);
     }
@@ -109,6 +111,59 @@ class PromptEngineTest {
         assertEquals("system", m.get(3).get("role"));
         assertTrue(m.get(3).get("content").contains("请用短句"));
         assertTrue(bundle.authorNoteChars() > 0);
+    }
+
+    @Test
+    @DisplayName("Post-History：作为最后一条 system 追加在全部历史之后")
+    void postHistoryAppendedAtEnd() {
+        PromptInput in = PromptInput.builder()
+                .character("林晚晴", "", "", "", "", "")
+                .history(turns(2))
+                .postHistory("保持第二人称叙事，不要替你做决定")
+                .budget(6000, 500)
+                .build();
+
+        PromptBundle bundle = engine.build(in);
+        List<Map<String, String>> m = bundle.messages();
+        // system + 2 条历史 + 收尾指令
+        assertEquals(4, m.size());
+        assertEquals("system", m.get(3).get("role"));
+        assertTrue(m.get(3).get("content").contains("不要替你做决定"));
+        // 收尾指令必须排在所有历史之后，它是约束力最强的一句话
+        assertEquals("第2句", m.get(2).get("content"));
+    }
+
+    @Test
+    @DisplayName("Post-History：没填就不追加，不产生空消息")
+    void blankPostHistoryIgnored() {
+        PromptInput in = PromptInput.builder()
+                .character("林晚晴", "", "", "", "", "")
+                .history(turns(2))
+                .postHistory("   ")
+                .budget(6000, 500)
+                .build();
+
+        PromptBundle bundle = engine.build(in);
+        assertEquals(3, bundle.messages().size());
+        assertEquals("第2句", bundle.messages().get(2).get("content"));
+    }
+
+    @Test
+    @DisplayName("Post-History：排在 in_chat 注入的作者注释之后，不会被挤走")
+    void postHistoryComesAfterInjections() {
+        PromptInput in = PromptInput.builder()
+                .character("林晚晴", "", "", "", "", "")
+                .history(turns(2))
+                .authorNote("请用短句", 0, 1, 1) // depth=0 → 历史末尾
+                .postHistory("不要替你做决定")
+                .budget(6000, 500)
+                .build();
+
+        List<Map<String, String>> m = engine.build(in).messages();
+        // 顺序应为：system → 历史×2 → 作者注释 → 收尾指令
+        assertEquals(5, m.size());
+        assertTrue(m.get(3).get("content").contains("请用短句"));
+        assertTrue(m.get(4).get("content").contains("不要替你做决定"));
     }
 
     @Test
@@ -177,5 +232,72 @@ class PromptEngineTest {
         assertTrue(system.contains("林晚晴"));
         assertTrue(system.contains("小董"));
         assertTrue(!system.contains("{{char}}"));
+    }
+
+    @Test
+    @DisplayName("用户人设插在角色设定之后、历史之前")
+    void userPersonaBeforeHistory() {
+        PromptInput in = PromptInput.builder()
+                .character("林晚晴", "老板娘", "", "", "", "")
+                .user("沈渡")
+                .userPersona("二十出头的游侠，左手缺一指")
+                .history(turns(2))
+                .budget(6000, 500)
+                .build();
+
+        PromptBundle bundle = engine.build(in);
+        List<Map<String, String>> m = bundle.messages();
+        // system(主) + 人设 + 历史×2
+        assertEquals(4, m.size());
+        assertTrue(m.get(1).get("content").contains("游侠"));
+        assertTrue(m.get(1).get("content").contains("沈渡"));
+        assertEquals("第1句", m.get(2).get("content"));
+        assertTrue(bundle.personaChars() > 0);
+    }
+
+    @Test
+    @DisplayName("空白人设不注入，不产生空消息")
+    void blankPersonaIgnored() {
+        PromptInput in = PromptInput.builder()
+                .character("林晚晴", "", "", "", "", "")
+                .userPersona("   ")
+                .history(turns(1))
+                .budget(6000, 500)
+                .build();
+        assertEquals(0, engine.build(in).personaChars());
+        assertEquals(2, engine.build(in).messages().size());
+    }
+
+    @Test
+    @DisplayName("剧情摘要插在人设之后、历史之前")
+    void memorySummaryBeforeHistory() {
+        PromptInput in = PromptInput.builder()
+                .character("林晚晴", "", "", "", "", "")
+                .user("沈渡")
+                .userPersona("游侠")
+                .memorySummary("两人曾在雾港码头交换过信物")
+                .history(turns(1))
+                .budget(6000, 500)
+                .build();
+
+        List<Map<String, String>> m = engine.build(in).messages();
+        // 主提示 → 人设 → 摘要 → 历史
+        assertEquals(4, m.size());
+        assertTrue(m.get(1).get("content").contains("游侠"));
+        assertTrue(m.get(2).get("content").contains("雾港码头"));
+        assertEquals("第1句", m.get(3).get("content"));
+        assertTrue(engine.build(in).memoryChars() > 0);
+    }
+
+    @Test
+    @DisplayName("空白摘要不注入")
+    void blankMemoryIgnored() {
+        PromptInput in = PromptInput.builder()
+                .character("林晚晴", "", "", "", "", "")
+                .memorySummary("  ")
+                .history(turns(1))
+                .budget(6000, 500)
+                .build();
+        assertEquals(0, engine.build(in).memoryChars());
     }
 }

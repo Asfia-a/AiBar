@@ -17,6 +17,8 @@ public class MessageSwipe {
     /** 从 0 开始，0 是最初那条 */
     private Integer idx;
     private String content;
+    /** 该版本的思考过程 */
+    private String reasoning;
     private Integer tokens;
     private LocalDateTime createdAt;
 }

@@ -11,17 +11,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 提示词引擎：把「角色卡 + 历史 + 世界书 + 作者注释」拼成一次请求的 messages。
+ * 提示词引擎：把「角色卡 + 用户人设 + 记忆摘要 + 历史 + 世界书 + 作者注释」拼成 messages。
  *
  * <p>拼装顺序对齐 SillyTavern：
  * <pre>
  * system  : 主提示（含角色设定）
- * system  : 世界书（before_char）
- * system  : 作者注释（after_char）
+ * system  : 世界书（before_char / after_char）
+ * system  : 用户人设（关于 {{user}}）
+ * system  : 剧情摘要（被窗口裁掉的早期内容）
  * [history]
  *   └─ in_chat 注入：世界书 / 作者注释按 depth 插到倒数第 N 条之前
+ * system  : Post-History Instructions（收尾强指令，永远在最后）
  * </pre>
- * 越靠后的内容对模型这次回复影响越大，所以作者注释默认放在历史附近而不是最前面。
  */
 @Service
 @RequiredArgsConstructor
@@ -72,6 +73,20 @@ public class PromptEngine {
             }
         }
 
+        // 2.5 用户人设：角色设定之后、历史之前——模型要先知道「对面是谁」
+        String personaBlock = "";
+        if (in.userPersona() != null && !in.userPersona().isBlank()) {
+            personaBlock = templates.render(templates.get("user_persona_format"),
+                    Map.of("user", userName, "content", in.userPersona().trim())).trim();
+        }
+
+        // 2.6 剧情摘要：紧贴历史之前，补上被窗口裁掉的早期事实
+        String memoryBlock = "";
+        if (in.memorySummary() != null && !in.memorySummary().isBlank()) {
+            memoryBlock = templates.render(templates.get("memory_summary_format"),
+                    Map.of("content", in.memorySummary().trim())).trim();
+        }
+
         // 3. 作者注释：按频率决定这轮插不插；depth=0 表示挂在历史末尾（离模型最近）
         String authorNote = "";
         Injection authorInjection = null;
@@ -81,16 +96,28 @@ public class PromptEngine {
             authorInjection = new Injection(Math.max(in.authorNoteDepth(), 0), "system", authorNote);
         }
 
+        // 3.5 Post-History Instructions：历史之后追加的最后一条 system
+        String postHistory = "";
+        if (in.postHistory() != null && !in.postHistory().isBlank()) {
+            postHistory = templates.render(templates.get("post_history_format"),
+                    Map.of("content", in.postHistory().trim())).trim();
+        }
+
         int wiChars = beforeChar.stream().mapToInt(String::length).sum()
                 + afterChar.stream().mapToInt(String::length).sum()
                 + inChat.stream().filter(i -> i.content() != null)
                 .mapToInt(i -> i.content().length()).sum();
         int anChars = authorInjection == null ? 0 : authorNote.length();
+        int personaChars = personaBlock.length();
+        int memoryChars = memoryBlock.length();
 
-        // 4. 预算：固定部分（主提示 + 世界书 + 注释）先占，剩下给历史
+        // 4. 预算：固定部分先占，剩下给历史
         int fixedTokens = TokenEstimator.estimate(system)
                 + (beforeChar.isEmpty() && afterChar.isEmpty() && inChat.isEmpty() ? 0 : wiChars / 3)
-                + TokenEstimator.estimate(authorNote);
+                + TokenEstimator.estimate(authorNote)
+                + TokenEstimator.estimate(postHistory)
+                + TokenEstimator.estimate(personaBlock)
+                + TokenEstimator.estimate(memoryBlock);
 
         // 历史必须保底：角色卡写得很细时，主提示可能吃掉大半预算。
         // 如果只是「剩下的给历史」，长卡会让历史直接变成 0 条，
@@ -106,6 +133,12 @@ public class PromptEngine {
         messages.add(msg("system", system));
         beforeChar.forEach(c -> messages.add(msg("system", c)));
         afterChar.forEach(c -> messages.add(msg("system", c)));
+        if (!personaBlock.isEmpty()) {
+            messages.add(msg("system", personaBlock));
+        }
+        if (!memoryBlock.isEmpty()) {
+            messages.add(msg("system", memoryBlock));
+        }
 
         // in-chat 注入：按 depth 从大到小（越靠前）依次插入，保证下标不漂移
         List<Injection> sorted = new ArrayList<>(inChat);
@@ -124,6 +157,10 @@ public class PromptEngine {
             messages.add(msg(t.role(), t.content()));
             dialogueChars += t.content() == null ? 0 : t.content().length();
         }
+        // 收尾指令永远排最后：历史可以因预算被裁，这条不能被历史挤走
+        if (!postHistory.isEmpty()) {
+            messages.add(msg("system", postHistory));
+        }
 
         List<String> titles = activated.stream()
                 .map(e -> nvl(e.getTitle(), String.valueOf(e.getId())))
@@ -132,8 +169,9 @@ public class PromptEngine {
         return new PromptBundle(messages, in.history().size(), kept.size(),
                 Math.max(in.history().size() - kept.size(), 0),
                 system.length() + beforeChar.stream().mapToInt(String::length).sum()
-                        + afterChar.stream().mapToInt(String::length).sum(),
-                dialogueChars, wiChars, anChars, titles);
+                        + afterChar.stream().mapToInt(String::length).sum()
+                        + postHistory.length(),
+                dialogueChars, wiChars, anChars, personaChars, memoryChars, titles);
     }
 
     /** 从最新往回装历史，装不下就停——先保最近的对话 */
@@ -166,6 +204,12 @@ public class PromptEngine {
         // 用户这轮刚说的话还没入库时也能命中世界书
         if (in.authorNote() != null) {
             sb.append(in.authorNote());
+        }
+        if (in.userPersona() != null) {
+            sb.append(in.userPersona());
+        }
+        if (in.memorySummary() != null) {
+            sb.append(in.memorySummary());
         }
         return sb.toString();
     }

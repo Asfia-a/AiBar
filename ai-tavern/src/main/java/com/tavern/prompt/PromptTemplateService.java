@@ -23,13 +23,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PromptTemplateService {
 
     /** 模板缺失时的兜底，保证不会因为文件丢失导致对话直接失败 */
-    private static final Map<String, String> DEFAULTS = Map.of(
-            "main", "你正在扮演「{{char}}」，与「{{user}}」进行角色扮演。\n"
-                    + "保持角色身份与语气，不要替「{{user}}」行动或说话。\n\n{{persona_block}}",
-            "character", "## 身份\n{{description}}\n## 性格\n{{personality}}\n"
-                    + "## 背景\n{{background}}\n## 示例对话\n{{example}}\n## 说话风格\n{{tags}}",
-            "worldinfo_format", "【{{title}}】\n{{content}}",
-            "author_note_format", "【作者注释】\n{{content}}"
+    private static final Map<String, String> DEFAULTS = Map.ofEntries(
+            Map.entry("main", "你正在扮演「{{char}}」，与「{{user}}」进行角色扮演。\n"
+                    + "保持角色身份与语气，不要替「{{user}}」行动或说话。\n\n{{persona_block}}"),
+            Map.entry("character", "## 身份\n{{description}}\n## 性格\n{{personality}}\n"
+                    + "## 背景\n{{background}}\n## 示例对话\n{{example}}\n## 说话风格\n{{tags}}"),
+            Map.entry("worldinfo_format", "【{{title}}】\n{{content}}"),
+            Map.entry("author_note_format", "【作者注释】\n{{content}}"),
+            Map.entry("user_persona_format", "【关于「{{user}}」】\n{{content}}"),
+            Map.entry("memory_summary_format", "【此前剧情摘要】\n{{content}}"),
+            Map.entry("memory_summarize", "把旧摘要与新对话合并成不超过 {{max_chars}} 字的中文剧情摘要。"
+                    + "\n角色：{{char}}\n用户：{{user}}\n【旧摘要】\n{{old_summary}}\n【新增对话】\n{{new_dialogue}}"),
+            Map.entry("post_history_format", "【收尾指令】\n{{content}}")
     );
 
     private final Map<String, String> cache = new ConcurrentHashMap<>();

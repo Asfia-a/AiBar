@@ -59,11 +59,13 @@ class ChatMessageOpsTest {
     private final RuntimeMetricsService metricsService = mock(RuntimeMetricsService.class);
     private final PromptEngine promptEngine = mock(PromptEngine.class);
     private final WorldInfoMapper worldInfoMapper = mock(WorldInfoMapper.class);
+    private final MemorySummaryService memorySummaryService = mock(MemorySummaryService.class);
 
     private final ChatService service = new ChatService(
             sessionMapper, messageMapper, swipeMapper, characterMapper, tagMapper, userMapper,
             tokenLogMapper, collectMapper, aiModelService, contentAuditService,
-            billingProperties, new ObjectMapper(), metricsService, promptEngine, worldInfoMapper);
+            billingProperties, new ObjectMapper(), metricsService, promptEngine, worldInfoMapper,
+            memorySummaryService);
 
     private ChatSession session(long userId) {
         ChatSession s = new ChatSession();
@@ -119,7 +121,7 @@ class ChatMessageOpsTest {
         assertEquals(1, inserted.get(1).getIdx().intValue());
         assertEquals("新回答", inserted.get(1).getContent());
 
-        verify(messageMapper).updateActive(50L, "新回答", 100, 1, 2);
+        verify(messageMapper).updateActive(50L, "新回答", null, 100, 1, 2);
     }
 
     @Test
@@ -245,5 +247,177 @@ class ChatMessageOpsTest {
         assertThrows(BusinessException.class, () -> service.deleteMessages(7L, 2L, List.of(999L)));
         // 一条都没删掉，就不该再去动 swipe / 收藏
         verify(swipeMapper, never()).deleteByMessageIds(anyList());
+    }
+
+    @Test
+    @DisplayName("删除本轮：点在用户消息上，连同下一条助手一起删")
+    void deleteRoundFromUserRemovesPair() {
+        when(sessionMapper.findById(2L)).thenReturn(session(7L));
+        when(messageMapper.listBySession(2L)).thenReturn(List.of(
+                message(10L, 2L, "user", "你好"),
+                message(11L, 2L, "assistant", "嗨"),
+                message(12L, 2L, "user", "下一轮"),
+                message(13L, 2L, "assistant", "继续")
+        ));
+        when(messageMapper.deleteByIds(eq(2L), anyList())).thenReturn(2);
+        when(messageMapper.findLast(2L)).thenReturn(message(13L, 2L, "assistant", "继续"));
+        when(messageMapper.countBySession(2L)).thenReturn(2);
+
+        ArgumentCaptor<List<Long>> idsCap = ArgumentCaptor.forClass(List.class);
+        java.util.Map<String, Object> res = service.deleteRound(7L, 2L, 10L);
+
+        verify(messageMapper).deleteByIds(eq(2L), idsCap.capture());
+        assertEquals(List.of(10L, 11L), idsCap.getValue());
+        assertEquals(List.of(10L, 11L), res.get("roundIds"));
+        assertEquals(2, res.get("deleted"));
+    }
+
+    @Test
+    @DisplayName("删除本轮：点在助手消息上，连同上一条用户一起删")
+    void deleteRoundFromAssistantRemovesPair() {
+        when(sessionMapper.findById(2L)).thenReturn(session(7L));
+        when(messageMapper.listBySession(2L)).thenReturn(List.of(
+                message(10L, 2L, "user", "你好"),
+                message(11L, 2L, "assistant", "嗨")
+        ));
+        when(messageMapper.deleteByIds(eq(2L), anyList())).thenReturn(2);
+        when(messageMapper.findLast(2L)).thenReturn(null);
+        when(messageMapper.countBySession(2L)).thenReturn(0);
+
+        ArgumentCaptor<List<Long>> idsCap = ArgumentCaptor.forClass(List.class);
+        service.deleteRound(7L, 2L, 11L);
+
+        verify(messageMapper).deleteByIds(eq(2L), idsCap.capture());
+        assertEquals(List.of(10L, 11L), idsCap.getValue());
+    }
+
+    @Test
+    @DisplayName("删除本轮：没有配对时只删锚点这一条")
+    void deleteRoundOrphanOnlySelf() {
+        when(sessionMapper.findById(2L)).thenReturn(session(7L));
+        when(messageMapper.listBySession(2L)).thenReturn(List.of(
+                message(10L, 2L, "user", "只有用户，助手还没回")
+        ));
+        when(messageMapper.deleteByIds(eq(2L), anyList())).thenReturn(1);
+        when(messageMapper.findLast(2L)).thenReturn(null);
+        when(messageMapper.countBySession(2L)).thenReturn(0);
+
+        ArgumentCaptor<List<Long>> idsCap = ArgumentCaptor.forClass(List.class);
+        java.util.Map<String, Object> res = service.deleteRound(7L, 2L, 10L);
+
+        verify(messageMapper).deleteByIds(eq(2L), idsCap.capture());
+        assertEquals(List.of(10L), idsCap.getValue());
+        assertEquals(List.of(10L), res.get("roundIds"));
+    }
+
+    private MessageSwipe swipeRow(int idx, String content) {
+        return swipeRow(idx, content, null);
+    }
+
+    private MessageSwipe swipeRow(int idx, String content, String reasoning) {
+        MessageSwipe s = new MessageSwipe();
+        s.setMessageId(30L);
+        s.setIdx(idx);
+        s.setContent(content);
+        s.setReasoning(reasoning);
+        s.setTokens(30);
+        return s;
+    }
+
+    @Test
+    @DisplayName("分支：多版本一起复制进新会话，版本号与内容对得上")
+    void branchCopiesSwipeVersions() {
+        when(messageMapper.findById(30L)).thenReturn(message(30L, 2L, "assistant", "当前版本回答"));
+        when(sessionMapper.findById(2L)).thenReturn(session(7L));
+        CharacterCard card = new CharacterCard();
+        card.setId(9L);
+        card.setName("林晚晴");
+        when(characterMapper.findById(9L)).thenReturn(card);
+
+        ChatMessage greet = message(10L, 2L, "assistant", "开场白");
+        ChatMessage user = message(20L, 2L, "user", "问题");
+        ChatMessage ai = message(30L, 2L, "assistant", "当前版本回答");
+        ai.setReasoning("当前版思考");
+        ai.setSwipeCount(2);
+        ai.setSwipeIndex(1);
+        when(messageMapper.listBySession(2L)).thenReturn(List.of(greet, user, ai));
+
+        // 用 Answer 模拟自增主键：插一条发一个新 id
+        java.util.concurrent.atomic.AtomicLong seq = new java.util.concurrent.atomic.AtomicLong(1000);
+        when(messageMapper.insert(any())).thenAnswer(inv -> {
+            ChatMessage m = inv.getArgument(0);
+            m.setId(seq.incrementAndGet());
+            return 1;
+        });
+        when(swipeMapper.findByMessage(org.mockito.ArgumentMatchers.anyLong())).thenAnswer(inv -> {
+            long id = inv.getArgument(0, Long.class);
+            return id == 30L
+                    ? List.of(swipeRow(0, "第一版回答", "第一版思考"), swipeRow(1, "第二版回答", "第二版思考"))
+                    : List.of();
+        });
+        // copy.getId() 依赖自增主键回填，mock 下是 null：会话查回来的是新分支
+        ChatSession fresh = new ChatSession();
+        fresh.setId(99L);
+        fresh.setMessageCount(0);
+        fresh.setTotalTokens(0L);
+        when(sessionMapper.findById(org.mockito.ArgumentMatchers.isNull())).thenReturn(fresh);
+
+        ChatSession created = service.branch(7L, 30L);
+
+        assertEquals(99L, created.getId());
+        assertEquals(3, created.getMessageCount());
+        assertEquals("当前版本回答", created.getLastMessage());
+
+        ArgumentCaptor<ChatMessage> msgCaptor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messageMapper, org.mockito.Mockito.times(3)).insert(msgCaptor.capture());
+        ChatMessage copiedAi = msgCaptor.getAllValues().get(2);
+        assertEquals(2, copiedAi.getSwipeCount(), "版本数要跟源消息一致");
+        assertEquals(1, copiedAi.getSwipeIndex(), "当前展示的版本也要跟源消息一致");
+        assertEquals("当前版思考", copiedAi.getReasoning(), "思考链要随消息带走");
+
+        ArgumentCaptor<MessageSwipe> swipeCaptor = ArgumentCaptor.forClass(MessageSwipe.class);
+        verify(swipeMapper, org.mockito.Mockito.times(2)).insert(swipeCaptor.capture());
+        List<MessageSwipe> inserted = swipeCaptor.getAllValues();
+        // 新消息 id 是第三个自增值（1001 开场白、1002 用户消息、1003 助手回复）
+        assertEquals(1003L, inserted.get(0).getMessageId());
+        assertEquals(0, inserted.get(0).getIdx());
+        assertEquals("第一版回答", inserted.get(0).getContent());
+        assertEquals("第一版思考", inserted.get(0).getReasoning());
+        assertEquals(1003L, inserted.get(1).getMessageId());
+        assertEquals(1, inserted.get(1).getIdx());
+        assertEquals("第二版回答", inserted.get(1).getContent());
+        assertEquals("第二版思考", inserted.get(1).getReasoning());
+    }
+
+    @Test
+    @DisplayName("分支：分支点之后的消息不复制")
+    void branchOnlyCopiesUpToCutoff() {
+        when(messageMapper.findById(20L)).thenReturn(message(20L, 2L, "user", "问题"));
+        when(sessionMapper.findById(2L)).thenReturn(session(7L));
+        when(characterMapper.findById(9L)).thenReturn(new CharacterCard());
+        when(messageMapper.listBySession(2L)).thenReturn(List.of(
+                message(10L, 2L, "assistant", "开场白"),
+                message(20L, 2L, "user", "问题"),
+                message(30L, 2L, "assistant", "不该被复制走")));
+
+        java.util.concurrent.atomic.AtomicLong seq = new java.util.concurrent.atomic.AtomicLong(1000);
+        when(messageMapper.insert(any())).thenAnswer(inv -> {
+            ChatMessage m = inv.getArgument(0);
+            m.setId(seq.incrementAndGet());
+            return 1;
+        });
+        when(swipeMapper.findByMessage(org.mockito.ArgumentMatchers.anyLong())).thenReturn(List.of());
+        ChatSession fresh = new ChatSession();
+        fresh.setId(99L);
+        fresh.setMessageCount(0);
+        fresh.setTotalTokens(0L);
+        when(sessionMapper.findById(org.mockito.ArgumentMatchers.isNull())).thenReturn(fresh);
+
+        ChatSession created = service.branch(7L, 20L);
+
+        assertEquals(2, created.getMessageCount());
+        ArgumentCaptor<ChatMessage> msgCaptor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messageMapper, org.mockito.Mockito.times(2)).insert(msgCaptor.capture());
+        assertEquals("问题", msgCaptor.getAllValues().get(1).getContent());
     }
 }

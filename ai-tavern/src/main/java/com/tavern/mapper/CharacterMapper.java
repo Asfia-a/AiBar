@@ -13,10 +13,10 @@ public interface CharacterMapper {
     CharacterCard findById(Long id);
 
     @Insert("""
-            INSERT INTO t_character(name, avatar, description, personality, background_story, example_dialogue, greeting,
+            INSERT INTO t_character(name, avatar, description, personality, background_story, example_dialogue, post_history, greeting,
             creator_id, category_id, status, source_id, version, temperature, top_p, max_tokens,
             top_k, frequency_penalty, presence_penalty, repetition_penalty, stop_words)
-            VALUES(#{name}, #{avatar}, #{description}, #{personality}, #{backgroundStory}, #{exampleDialogue}, #{greeting},
+            VALUES(#{name}, #{avatar}, #{description}, #{personality}, #{backgroundStory}, #{exampleDialogue}, #{postHistory}, #{greeting},
             #{creatorId}, #{categoryId}, #{status}, #{sourceId}, #{version}, #{temperature}, #{topP}, #{maxTokens},
             #{topK}, #{frequencyPenalty}, #{presencePenalty}, #{repetitionPenalty}, #{stopWords})
             """)
@@ -25,7 +25,7 @@ public interface CharacterMapper {
 
     @Update("""
             UPDATE t_character SET name=#{name}, avatar=#{avatar}, description=#{description}, personality=#{personality},
-            background_story=#{backgroundStory}, example_dialogue=#{exampleDialogue}, greeting=#{greeting},
+            background_story=#{backgroundStory}, example_dialogue=#{exampleDialogue}, post_history=#{postHistory}, greeting=#{greeting},
             category_id=#{categoryId}, temperature=#{temperature}, top_p=#{topP}, max_tokens=#{maxTokens},
             top_k=#{topK}, frequency_penalty=#{frequencyPenalty}, presence_penalty=#{presencePenalty},
             repetition_penalty=#{repetitionPenalty}, stop_words=#{stopWords},
