@@ -6,9 +6,11 @@
 
 ![用户端首页](docs/screenshots/01-home.jpg)
 
-| 管理端概览 | 模型配置 |
+| 世界广场 | 世界探索大厅 |
 |---|---|
-| ![管理端](docs/screenshots/02-admin-dashboard.jpg) | ![模型配置](docs/screenshots/04-admin-model.jpg) |
+| ![世界广场](docs/screenshots/03-world-plaza.jpg) | ![世界详情](docs/screenshots/05-world-detail.jpg) |
+
+![管理端概览](docs/screenshots/02-admin-dashboard.jpg)
 
 ## 功能概览
 
